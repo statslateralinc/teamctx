@@ -64,7 +64,7 @@ async function addRoleInteractive(prefill = {}) {
 
   await commitContext(`feat: add role "${slug}" to teamctx`);
   if (config.autoPush) {
-    try { await pushContext(); } catch { console.log('Note: push failed — check your git remote.'); }
+    try { await pushContext(); } catch (err) { console.log(`Note: push failed (${err.message?.split('\n')[0] || err.stderr?.trim() || 'no remote?'}) — check your git remote.`); }
   }
 
   const url = config.deployUrl ? `${config.deployUrl}/context/${slug}` : `[your-vercel-url]/context/${slug}`;

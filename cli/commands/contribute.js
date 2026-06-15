@@ -63,7 +63,7 @@ export async function contributeCommand(text, opts) {
 
   if (config.autoPush) {
     try { await pushContext(); console.log('\n✓ Committed and pushed.'); }
-    catch { console.log('\n✓ Committed. Push failed — run `git push` manually.'); }
+    catch (err) { console.log(`\n✓ Committed. Push failed (${err.message?.split('\n')[0] || err.stderr?.trim() || 'no remote?'}) — run \`git push\` manually.`); }
   } else {
     console.log('\n✓ Committed. Run `git push` to share with your team.');
   }

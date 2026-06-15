@@ -44,7 +44,7 @@ export async function reflectCommand() {
 
   await commitContext('context: reflect — AI rewrote shared context');
   if (config.autoPush) {
-    try { await pushContext(); } catch { console.log('Push failed — run `git push` manually.'); }
+    try { await pushContext(); } catch (err) { console.log(`Push failed (${err.message?.split('\n')[0] || err.stderr?.trim() || 'no remote?'}) — run \`git push\` manually.`); }
   }
   console.log('\n✓ Context reflected and committed.');
 }
