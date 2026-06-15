@@ -39,8 +39,13 @@ export async function pullCommand() {
       const text = item.author && item.author !== config.me
         ? `[From ${item.author}] ${item.text}`
         : item.text;
-      await contributeCommand(text, { autoApprove: false, decision: false });
-      processed++;
+      try {
+        await contributeCommand(text, { autoApprove: false, decision: false });
+        processed++;
+      } catch (err) {
+        console.error(`  Error processing contribution: ${err.message}`);
+        console.log('  Skipping — moving to next item.\n');
+      }
     } else {
       console.log('Skipped.\n');
     }
