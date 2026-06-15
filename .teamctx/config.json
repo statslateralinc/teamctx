@@ -1,0 +1,10 @@
+{
+  "project": "myaccount",
+  "me": "shikhin",
+  "model": "claude-opus-4-7",
+  "autoPush": true,
+  "deployUrl": "https://git-for-non-tech-teams.vercel.app",
+  "githubRawBase": "",
+  "managerEmail": "",
+  "roles": []
+}
