@@ -4,7 +4,12 @@ function getKv() {
   return createClient({ url: process.env.KV_REST_API_URL, token: process.env.KV_REST_API_TOKEN });
 }
 
+function esc(s) {
+  return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
 function htmlForm(project) {
+  project = esc(project);
   return `<!DOCTYPE html>
 <html lang="en">
 <head>
