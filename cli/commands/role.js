@@ -67,18 +67,20 @@ async function addRoleInteractive(prefill = {}) {
   if (!responsibilities) { console.error('Responsibilities are required.'); process.exit(1); }
 
   const excludes = await ask('What should they NOT worry about? (optional)', defaultExcludes);
+  const email = await ask('Team member email (optional — for contribution notifications)', '');
 
   console.log('\n→ Role profile:');
   console.log(`  Name:     ${name} (${slugify(name)})`);
   console.log(`  Owns:     ${responsibilities}`);
   if (excludes) console.log(`  Excludes: ${excludes}`);
+  if (email) console.log(`  Email:    ${email}`);
 
   const confirm = await ask('\nSave this role? (y/n)', 'y');
   if (confirm.toLowerCase() !== 'y') { console.log('Cancelled.'); return; }
 
   let slug, updatedConfig;
   try {
-    const result = addRole({ name, responsibilities, excludes }, config);
+    const result = addRole({ name, responsibilities, excludes, email: email || undefined }, config);
     slug = result.slug;
     updatedConfig = result.config;
   } catch (err) {

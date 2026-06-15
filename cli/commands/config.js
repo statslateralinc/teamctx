@@ -34,3 +34,26 @@ export async function configModelCommand(value) {
   const label = MODELS.find(m => m.id === resolved).label;
   console.log(`✓ Model set to ${resolved} (${label})`);
 }
+
+export async function configGithubRawBaseCommand(value) {
+  const config = readConfig();
+  if (!value) {
+    console.log(`\nCurrent githubRawBase: ${config.githubRawBase || '(not set)'}`);
+    console.log('\nUsage: teamctx config github-raw-base <url>');
+    console.log('Example: teamctx config github-raw-base https://raw.githubusercontent.com/org/repo/main');
+    return;
+  }
+  writeConfig({ ...config, githubRawBase: value });
+  console.log(`✓ githubRawBase set to ${value}`);
+}
+
+export async function configManagerEmailCommand(value) {
+  const config = readConfig();
+  if (!value) {
+    console.log(`\nCurrent managerEmail: ${config.managerEmail || '(not set)'}`);
+    console.log('\nUsage: teamctx config manager-email <email>');
+    return;
+  }
+  writeConfig({ ...config, managerEmail: value });
+  console.log(`✓ managerEmail set to ${value}`);
+}

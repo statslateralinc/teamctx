@@ -30,10 +30,12 @@ export async function initCommand() {
   const autoPush = autoPushAnswer.toLowerCase() === 'y';
 
   const deployUrl = await ask('Vercel deploy URL (optional, for team context links)', '');
+  const githubRawBase = await ask('GitHub raw base URL (optional, e.g. https://raw.githubusercontent.com/org/repo/main)', '');
+  const managerEmail = await ask('Your email (optional, for team contribution notifications)', '');
 
   mkdirSync(join(teamctxDir, 'context', 'roles'), { recursive: true });
 
-  const config = { project, me, model, autoPush, deployUrl: deployUrl || '', roles: [] };
+  const config = { project, me, model, autoPush, deployUrl: deployUrl || '', githubRawBase: githubRawBase || '', managerEmail: managerEmail || '', roles: [] };
   writeConfig(config, teamctxDir);
 
   const workstream = { id: 'main', name: project, whys: [] };
