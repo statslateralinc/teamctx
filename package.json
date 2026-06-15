@@ -1,0 +1,26 @@
+{
+  "name": "teamctx",
+  "version": "0.1.0",
+  "description": "AI-native version control for team context",
+  "type": "module",
+  "bin": {
+    "teamctx": "./cli/index.js"
+  },
+  "scripts": {
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.52.0",
+    "@vercel/kv": "^3.0.0",
+    "commander": "^12.0.0",
+    "dotenv": "^16.0.0",
+    "jsonrepair": "^3.0.0"
+  },
+  "devDependencies": {
+    "vitest": "^2.0.0"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
