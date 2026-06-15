@@ -60,6 +60,11 @@ describe('role files', () => {
     writeRoleFile('cpo', '# CPO Context\n\nHello', dir);
     expect(readRoleFile('cpo', dir)).toBe('# CPO Context\n\nHello');
   });
+
+  it('throws on invalid slug with path traversal characters', () => {
+    expect(() => writeRoleFile('../../config', '# bad', dir)).toThrow(/invalid role slug/i);
+    expect(() => readRoleFile('../../config', dir)).toThrow(/invalid role slug/i);
+  });
 });
 
 describe('shared.md', () => {

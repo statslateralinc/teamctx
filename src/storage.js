@@ -45,13 +45,21 @@ export function readContributions(dir) {
   return readFileSync(p, 'utf-8').split('\n').filter(Boolean).map(line => JSON.parse(line));
 }
 
+function sanitizeSlug(slug) {
+  if (!/^[a-zA-Z0-9_-]+$/.test(slug)) {
+    throw new Error(`Invalid role slug: "${slug}"`);
+  }
+}
+
 export function writeRoleFile(slug, content, dir) {
+  sanitizeSlug(slug);
   const rolesDir = resolve(dir, 'context', 'roles');
   mkdirSync(rolesDir, { recursive: true });
   writeFileSync(join(rolesDir, `${slug}.md`), content);
 }
 
 export function readRoleFile(slug, dir) {
+  sanitizeSlug(slug);
   return readFileSync(resolve(dir, 'context', 'roles', `${slug}.md`), 'utf-8');
 }
 
