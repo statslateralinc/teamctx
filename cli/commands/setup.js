@@ -1,116 +1,130 @@
 import { existsSync } from 'fs';
-import { join } from 'path';
-import { execFile } from 'child_process';
+import { execFile, spawnSync } from 'child_process';
 import { promisify } from 'util';
 import { ask } from '../prompt.js';
+import { checkGitRepo } from '../../src/git.js';
 import { initCommand } from './init.js';
 
 const execFileAsync = promisify(execFile);
 
-async function ghFetch(url, token, opts = {}) {
-  const res = await fetch(url, {
-    ...opts,
-    headers: {
-      Authorization: `Bearer ${token}`,
-      Accept: 'application/vnd.github.v3+json',
-      'Content-Type': 'application/json',
-    },
+async function getGitRemoteUrl() {
+  const { stdout } = await execFileAsync('git', ['remote', 'get-url', 'origin']);
+  return stdout.trim();
+}
+
+function parseGitHubUrl(url) {
+  const m = url.match(/github\.com[/:]([^/]+)\/([^/.]+)/);
+  if (!m) throw new Error(`Cannot parse GitHub URL: ${url}`);
+  return { owner: m[1], repo: m[2] };
+}
+
+async function getCurrentBranch() {
+  try {
+    const { stdout } = await execFileAsync('git', ['rev-parse', '--abbrev-ref', 'HEAD']);
+    return stdout.trim() || 'main';
+  } catch {
+    return 'main';
+  }
+}
+
+function vercelInstalled() {
+  const r = spawnSync('vercel', ['--version'], { stdio: 'pipe' });
+  return r.status === 0;
+}
+
+function setVercelEnv(key, value) {
+  const r = spawnSync('vercel', ['env', 'add', key, 'production'], {
+    input: value + '\n',
+    stdio: ['pipe', 'inherit', 'inherit'],
+    encoding: 'utf-8',
   });
-  const data = await res.json();
-  if (!res.ok) throw new Error(data.message || `GitHub API error ${res.status}`);
-  return data;
+  if (r.status !== 0) throw new Error(`vercel env add ${key} failed`);
 }
 
 export async function setupCommand() {
-  console.log('\nSetting up teamctx with a new private GitHub repo.');
-  console.log('You need a GitHub classic PAT with "repo" scope.');
-  console.log('Create one at: https://github.com/settings/tokens/new\n');
+  console.log('\nSetting up teamctx.');
+  console.log('Step 1: create a private GitHub repo at github.com/new, clone it, and cd into it.');
+  console.log('Once you\'ve done that, this command handles the rest.\n');
 
-  // 1. GitHub token
-  const token = await ask('GitHub personal access token');
+  await checkGitRepo();
+
+  // Auto-detect repo from git remote
+  let owner, repoName;
+  try {
+    const remoteUrl = await getGitRemoteUrl();
+    ({ owner, repo: repoName } = parseGitHubUrl(remoteUrl));
+    console.log(`Detected: ${owner}/${repoName}`);
+  } catch {
+    const manual = await ask('GitHub repo (e.g. myorg/my-repo)');
+    if (!manual?.includes('/')) { console.error('Invalid repo.'); process.exit(1); }
+    [owner, repoName] = manual.split('/');
+  }
+
+  const branch = await getCurrentBranch();
+  const rawBase = `https://raw.githubusercontent.com/${owner}/${repoName}/${branch}`;
+
+  // GitHub token
+  console.log('\nYou need a GitHub personal access token with read+write access to this repo.');
+  console.log('Create one at github.com/settings/tokens/new — check the "repo" scope.\n');
+  const token = await ask('GitHub token');
   if (!token) { console.error('Token is required.'); process.exit(1); }
 
-  // 2. Verify token + get user info
-  process.stdout.write('→ Verifying token...');
-  let user;
-  try {
-    user = await ghFetch('https://api.github.com/user', token);
-    process.stdout.write(` authenticated as ${user.login}.\n\n`);
-  } catch (err) {
-    console.error(`\nInvalid token: ${err.message}`);
+  // Verify token can access the repo
+  process.stdout.write('→ Verifying access...');
+  const verifyRes = await fetch(`https://api.github.com/repos/${owner}/${repoName}`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!verifyRes.ok) {
+    console.error(`\nCannot access ${owner}/${repoName} with that token (HTTP ${verifyRes.status}).`);
+    console.error('Make sure the token has "repo" scope and access to this repository.');
     process.exit(1);
   }
+  console.log(' ok.\n');
 
-  // 3. Personal account or org?
-  const ownerAnswer = await ask(`Create repo under your account (${user.login}) or an org? Enter org name, or press Enter for personal account`, '');
-  const owner = ownerAnswer.trim() || user.login;
+  // teamctx init (skip if already done)
+  if (existsSync('.teamctx')) {
+    console.log('✓ teamctx already initialized in this repo.\n');
+  } else {
+    console.log('Initializing teamctx...');
+    console.log(`When prompted for "GitHub raw base URL", enter:\n  ${rawBase}\n`);
+    await initCommand();
+  }
 
-  // 4. Repo name
-  const repoName = await ask('Private repo name for team context data', 'team-context');
-  if (!repoName) { console.error('Repo name is required.'); process.exit(1); }
+  // Connect to Vercel
+  const envVars = {
+    GITHUB_REPO: `${owner}/${repoName}`,
+    GITHUB_RAW_BASE: rawBase,
+    GITHUB_TOKEN: token,
+  };
 
-  // 5. Create private repo on GitHub
-  process.stdout.write(`\n→ Creating private repo ${owner}/${repoName}...`);
-  let repo;
-  const createUrl = owner === user.login
-    ? 'https://api.github.com/user/repos'
-    : `https://api.github.com/orgs/${owner}/repos`;
-  try {
-    repo = await ghFetch(createUrl, token, {
-      method: 'POST',
-      body: JSON.stringify({
-        name: repoName,
-        private: true,
-        auto_init: true,
-        description: 'teamctx context data',
-      }),
-    });
-    process.stdout.write(' done.\n');
-  } catch (err) {
-    console.error(`\nFailed to create repo: ${err.message}`);
-    if (err.message.includes('not accessible')) {
-      console.error('The token needs "repo" scope (classic PAT) or org admin permissions.');
+  if (vercelInstalled()) {
+    const auto = await ask('Auto-set Vercel env vars? (y/n)', 'y');
+    if (auto.toLowerCase() === 'y') {
+      console.log();
+      for (const [key, value] of Object.entries(envVars)) {
+        process.stdout.write(`→ Setting ${key}... `);
+        try {
+          setVercelEnv(key, value);
+          console.log('✓');
+        } catch (err) {
+          console.log(`failed: ${err.message}`);
+        }
+      }
+      const deploy = await ask('\nDeploy to production now? (y/n)', 'y');
+      if (deploy.toLowerCase() === 'y') {
+        spawnSync('vercel', ['--prod'], { stdio: 'inherit' });
+      }
+      return;
     }
-    process.exit(1);
   }
 
-  // 5. Clone repo locally
-  const defaultDir = join(process.cwd(), repoName);
-  const localPath = await ask('Clone to', defaultDir);
-
-  if (existsSync(localPath)) {
-    console.error(`\nDirectory already exists: ${localPath}`);
-    process.exit(1);
+  // Manual fallback
+  console.log('\n──────────────────────────────────────────────────────');
+  console.log('Set these env vars in your Vercel project, then deploy:');
+  console.log('──────────────────────────────────────────────────────');
+  for (const [key, value] of Object.entries(envVars)) {
+    console.log(`  ${key.padEnd(18)} ${value}`);
   }
-
-  process.stdout.write(`\n→ Cloning into ${localPath}...`);
-  // Token embedded in URL — stays in local .git/config only, never committed
-  const authUrl = repo.clone_url.replace('https://', `https://${token}@`);
-  try {
-    await execFileAsync('git', ['clone', authUrl, localPath]);
-    process.stdout.write(' done.\n');
-  } catch (err) {
-    console.error(`\nClone failed: ${err.stderr || err.message}`);
-    process.exit(1);
-  }
-
-  // 6. cd in and run teamctx init
-  process.chdir(localPath);
-
-  const rawBase = `https://raw.githubusercontent.com/${owner}/${repoName}/main`;
-  console.log(`\n→ Initializing teamctx. When prompted for:\n`);
-  console.log(`   Vercel deploy URL      → your deployed web app URL`);
-  console.log(`   GitHub raw base URL    → ${rawBase}`);
-  console.log(`   Manager email          → your email\n`);
-
-  await initCommand();
-
-  // 7. Print Vercel env var values
-  console.log('\n─────────────────────────────────────────────────────────');
-  console.log('Add these env vars to your Vercel project, then redeploy:');
-  console.log('─────────────────────────────────────────────────────────');
-  console.log(`  GITHUB_REPO      ${owner}/${repoName}`);
-  console.log(`  GITHUB_RAW_BASE  ${rawBase}`);
-  console.log(`  GITHUB_TOKEN     [the token you entered above]`);
-  console.log('─────────────────────────────────────────────────────────\n');
+  console.log('──────────────────────────────────────────────────────');
+  console.log('Then run: vercel --prod\n');
 }
