@@ -56,16 +56,96 @@ teamctx contribute "We decided to use AWS (Why). API migration starts next sprin
 
 ---
 
-## Web layer (optional)
+## Self-hosting (web layer)
 
-Deploy to Vercel to give non-technical team members:
+Deploy to Vercel to give non-technical team members two routes:
 
 - **`/context/<role>`** — downloads their role context file
 - **`/contribute`** — a plain HTML form to submit updates
 
 Manager runs `teamctx pull` to process web submissions.
 
-Vercel env vars needed: `ANTHROPIC_API_KEY`, `KV_REST_API_URL`, `KV_REST_API_TOKEN`
+### Setup
+
+**Prerequisites:** Node 18+, git, [Vercel CLI](https://vercel.com/docs/cli), Anthropic API key, GitHub account.
+
+**1. Fork to a private repo**
+
+Create a new **private** GitHub repo (e.g. `github.com/you/team-context`), then:
+
+```bash
+git clone https://github.com/StatsLateral/teamctx team-context
+cd team-context
+git remote set-url origin https://github.com/you/team-context
+git push -u origin main
+```
+
+**2. Install and configure locally**
+
+```bash
+npm install
+npm install -g .          # makes `teamctx` available in your shell
+
+cp .env.example .env.local
+# Edit .env.local — add your key:
+# ANTHROPIC_API_KEY=sk-ant-...
+```
+
+**3. Initialize teamctx**
+
+```bash
+teamctx init
+# Prompts: project name, your name, model, auto-push, Vercel URL (leave blank for now)
+```
+
+This creates `.teamctx/` and commits it to your private repo.
+
+**4. Deploy to Vercel**
+
+Connect your private repo to a new Vercel project:
+
+```bash
+vercel link      # follow prompts — create a new project linked to your private repo
+```
+
+Set the required env var:
+
+```bash
+vercel env add ANTHROPIC_API_KEY production
+```
+
+Deploy:
+
+```bash
+vercel --prod
+```
+
+Copy the production URL (e.g. `https://team-context-xyz.vercel.app`).
+
+**5. Update your config with the deploy URL**
+
+```bash
+teamctx config deploy-url https://team-context-xyz.vercel.app
+```
+
+**6. Add KV storage for web contributions** (optional — only needed for `teamctx pull`)
+
+In the [Vercel dashboard](https://vercel.com/dashboard) → Storage → Create → KV database → connect to your project. Then pull the credentials locally:
+
+```bash
+vercel env pull .env.local     # adds KV_REST_API_URL and KV_REST_API_TOKEN
+```
+
+### Keeping context current
+
+Every `teamctx contribute` commits and pushes to your private repo. Vercel's git integration auto-deploys on push — role files at `/context/<role>` are always up to date within seconds.
+
+### Security model
+
+- **Source + data** (`.teamctx/`) live in your private GitHub repo — only visible to you
+- **Role files** are served publicly at `/context/<role>` — share URLs directly with teammates
+- `contributions.jsonl` and `config.json` are never served; they stay on the Vercel filesystem only
+- The `/contribute` form is public (no login required) — manager reviews and approves all submissions via `teamctx pull` before anything is committed
 
 ---
 

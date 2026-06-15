@@ -57,3 +57,15 @@ export async function configManagerEmailCommand(value) {
   writeConfig({ ...config, managerEmail: value });
   console.log(`✓ managerEmail set to ${value}`);
 }
+
+export async function configDeployUrlCommand(value) {
+  const config = readConfig();
+  if (!value) {
+    console.log(`\nCurrent deployUrl: ${config.deployUrl || '(not set)'}`);
+    console.log('\nUsage: teamctx config deploy-url <url>');
+    console.log('Example: teamctx config deploy-url https://team-context-xyz.vercel.app');
+    return;
+  }
+  writeConfig({ ...config, deployUrl: value });
+  console.log(`✓ deployUrl set to ${value}`);
+}
