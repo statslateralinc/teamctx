@@ -91,10 +91,10 @@ npm install
 npm install -g .          # makes `teamctx` available in your shell
 ```
 
-Create a `.env.local` file in the project folder and add your Anthropic API key ([get one here](https://console.anthropic.com)):
+Add your Anthropic API key ([get one here](https://console.anthropic.com)) by running this in your terminal — replace the placeholder with your real key:
 
-```
-ANTHROPIC_API_KEY=sk-ant-your-key-here
+```bash
+echo "ANTHROPIC_API_KEY=sk-ant-your-key-here" > .env.local
 ```
 
 This file is gitignored and stays on your machine only.
