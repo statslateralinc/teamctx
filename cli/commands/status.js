@@ -10,7 +10,7 @@ export async function statusCommand() {
   console.log(`  Model:        ${config.model}`);
   console.log(`  Auto-push:    ${config.autoPush ? 'on' : 'off'}`);
   console.log(`  Why nodes:    ${workstream.whys.length}`);
-  console.log(`  Contributions:${contributions.length} total, ${decisions.length} decisions`);
+  console.log(`  Contributions: ${contributions.length} total, ${decisions.length} decisions`);
   console.log(`\nRoles (${config.roles.length}):`);
 
   if (config.roles.length === 0) {
