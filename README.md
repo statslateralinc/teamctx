@@ -136,12 +136,19 @@ Copy the production URL (e.g. `https://team-context-xyz.vercel.app`).
 teamctx config deploy-url https://team-context-xyz.vercel.app
 ```
 
-**6. Add KV storage for web contributions** (optional — only needed for `teamctx pull`)
+**6. Enable web contributions** (optional — only needed for `/contribute` and `teamctx pull`)
 
-In the [Vercel dashboard](https://vercel.com/dashboard) → Storage → Create → KV database → connect to your project. Then pull the credentials locally:
+The contribution form writes directly to your private GitHub repo. Add two env vars to your Vercel project:
 
 ```bash
-vercel env pull .env.local     # adds KV_REST_API_URL and KV_REST_API_TOKEN
+vercel env add GITHUB_TOKEN production   # fine-grained PAT, Contents: read+write on your private repo
+vercel env add GITHUB_REPO production    # e.g. StatsLateral/myaccount
+```
+
+Then pull them to your local `.env.local` so `teamctx pull` can read them:
+
+```bash
+vercel env pull .env.local
 ```
 
 ### Keeping context current

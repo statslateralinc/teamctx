@@ -1,9 +1,3 @@
-import { createClient } from '@vercel/kv';
-
-function getKv() {
-  return createClient({ url: process.env.KV_REST_API_URL, token: process.env.KV_REST_API_TOKEN });
-}
-
 function esc(s) {
   return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
@@ -38,6 +32,34 @@ function htmlForm(project) {
 </body></html>`;
 }
 
+async function writeToGitHub(entry) {
+  const token = process.env.GITHUB_TOKEN;
+  const repo = process.env.GITHUB_REPO;
+  if (!token || !repo) throw new Error('GITHUB_TOKEN and GITHUB_REPO must be set as Vercel env vars');
+
+  const path = `.teamctx/pending/${entry.id}.json`;
+  const content = Buffer.from(JSON.stringify(entry, null, 2)).toString('base64');
+
+  const res = await fetch(`https://api.github.com/repos/${repo}/contents/${path}`, {
+    method: 'PUT',
+    headers: {
+      Authorization: `Bearer ${token}`,
+      Accept: 'application/vnd.github+json',
+      'Content-Type': 'application/json',
+      'X-GitHub-Api-Version': '2022-11-28',
+    },
+    body: JSON.stringify({
+      message: `contrib: web submission from ${entry.author}`,
+      content,
+    }),
+  });
+
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.message || `GitHub API returned ${res.status}`);
+  }
+}
+
 export default async function handler(req, res) {
   if (req.method === 'GET') {
     let project = 'Team';
@@ -65,9 +87,9 @@ export default async function handler(req, res) {
     };
 
     try {
-      await getKv().rpush('teamctx:contributions', JSON.stringify(entry));
+      await writeToGitHub(entry);
     } catch (err) {
-      console.error('KV error:', err.message);
+      console.error('GitHub error:', err.message);
       res.status(500).send('Failed to save. Please try again.');
       return;
     }
