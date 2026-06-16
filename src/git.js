@@ -23,3 +23,7 @@ export async function commitContext(message) {
 export async function pushContext() {
   await execFileAsync('git', ['push']);
 }
+
+export async function pullContext() {
+  await execFileAsync('git', ['pull', '--no-rebase']);
+}

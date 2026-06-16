@@ -1,48 +1,30 @@
+import { readdir, readFile, unlink } from 'fs/promises';
+import { join } from 'path';
 import { ask } from '../prompt.js';
-import { readConfig } from '../../src/storage.js';
+import { getTeamctxDir, readConfig } from '../../src/storage.js';
+import { pullContext } from '../../src/git.js';
 import { contributeCommand } from './contribute.js';
 
-function getGitHubEnv() {
-  const token = process.env.GITHUB_TOKEN;
-  const repo = process.env.GITHUB_REPO;
-  if (!token || !repo) {
-    throw new Error(
-      'GITHUB_TOKEN and GITHUB_REPO must be set in .env.local\n' +
-      'Copy them from your Vercel project env vars.'
-    );
-  }
-  return { token, repo };
-}
-
-async function ghRequest(path, method = 'GET', body = null, token) {
-  const res = await fetch(`https://api.github.com/${path}`, {
-    method,
-    headers: {
-      Authorization: `Bearer ${token}`,
-      Accept: 'application/vnd.github+json',
-      'X-GitHub-Api-Version': '2022-11-28',
-      ...(body ? { 'Content-Type': 'application/json' } : {}),
-    },
-    ...(body ? { body: JSON.stringify(body) } : {}),
-  });
-  return res;
-}
-
 export async function pullCommand() {
-  let token, repo;
-  try { ({ token, repo } = getGitHubEnv()); } catch (err) { console.error(`Error: ${err.message}`); process.exit(1); }
-
-  const listRes = await ghRequest(`repos/${repo}/contents/.teamctx/pending`, 'GET', null, token);
-
-  if (listRes.status === 404) { console.log('No pending web contributions.'); return; }
-
-  if (!listRes.ok) {
-    const err = await listRes.json().catch(() => ({}));
-    console.error(`GitHub API error: ${err.message || listRes.status}`);
+  process.stdout.write('→ Syncing with remote...');
+  try {
+    await pullContext();
+    console.log(' done.');
+  } catch (err) {
+    console.log(` ${err.message?.split('\n')[0] || 'failed'}`);
+    console.log('Resolve any git conflicts before running teamctx pull.');
     process.exit(1);
   }
 
-  const files = (await listRes.json()).filter(f => f.name.endsWith('.json'));
+  const pendingDir = join(getTeamctxDir(), 'pending');
+
+  let files = [];
+  try {
+    const entries = await readdir(pendingDir);
+    files = entries.filter(f => f.endsWith('.json'));
+  } catch {
+    // pending dir doesn't exist — no submissions
+  }
 
   if (files.length === 0) { console.log('No pending web contributions.'); return; }
 
@@ -50,10 +32,8 @@ export async function pullCommand() {
 
   let processed = 0;
   for (let i = 0; i < files.length; i++) {
-    const file = files[i];
-    const fileRes = await ghRequest(`repos/${repo}/contents/${file.path}`, 'GET', null, token);
-    const fileData = await fileRes.json();
-    const item = JSON.parse(Buffer.from(fileData.content, 'base64').toString('utf-8'));
+    const filePath = join(pendingDir, files[i]);
+    const item = JSON.parse(await readFile(filePath, 'utf-8'));
 
     console.log(`[${i + 1}/${files.length}] Author: ${item.author || 'anonymous'}`);
     console.log(`  "${item.text}"\n`);
@@ -68,15 +48,12 @@ export async function pullCommand() {
         ? `[From ${item.author}] ${item.text}`
         : item.text;
       try {
+        await unlink(filePath);
         await contributeCommand(text, { autoApprove: false, decision: false });
-        await ghRequest(`repos/${repo}/contents/${file.path}`, 'DELETE', {
-          message: `contrib: processed web submission from ${item.author}`,
-          sha: fileData.sha,
-        }, token);
         processed++;
       } catch (err) {
         console.error(`  Error processing contribution: ${err.message}`);
-        console.log('  Skipping — file left in pending for next pull.\n');
+        console.log('  Skipping.\n');
       }
     }
   }
