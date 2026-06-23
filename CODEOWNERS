@@ -1,0 +1,3 @@
+# Default owner for everything in this repo.
+# A PR touching any file auto-requests this owner's review.
+*       @StatsLateral

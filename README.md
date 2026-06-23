@@ -4,6 +4,15 @@ AI-native version control for team context. Every team member gets a continuousl
 
 **No server. No seats. Bring your own API key.**
 
+## Vision
+
+As teams adopt AI tools, the context that makes those tools useful — *why* the
+team is doing something, *what* it's building, *how* it works — lives scattered
+across docs, chats, and people's heads, and goes stale immediately. teamctx
+treats that shared context like source code: version-controlled, continuously
+updated, and compiled into a role-specific file each person hands to Claude,
+ChatGPT, or Gemini. No server, no seats, bring your own key.
+
 ---
 
 ## How it works
@@ -182,3 +191,13 @@ Every `teamctx contribute` commits and pushes to your private repo. Vercel's git
 ## License
 
 MIT
+
+## Project
+
+- [Roadmap](ROADMAP.md) — where teamctx is going
+- [Contributing](CONTRIBUTING.md) — how to propose changes (DCO sign-off required)
+- [Changelog](CHANGELOG.md) — what changed, per release
+- [Code of Conduct](CODE_OF_CONDUCT.md)
+- [Security Policy](SECURITY.md)
+
+Licensed under the [MIT License](LICENSE).
