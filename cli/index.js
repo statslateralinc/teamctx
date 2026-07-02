@@ -6,6 +6,7 @@ import { program } from 'commander';
 import { initCommand } from './commands/init.js';
 import { roleCommand } from './commands/role.js';
 import { contributeCommand } from './commands/contribute.js';
+import { askCommand } from './commands/ask.js';
 import { pullCommand } from './commands/pull.js';
 import { reflectCommand } from './commands/reflect.js';
 import { contextCommand } from './commands/context.js';
@@ -26,6 +27,10 @@ program.command('contribute <text>').description('Add context — AI updates all
   .option('--decision', 'Tag as a human decision (never pruned by reflect)')
   .option('--auto-approve', 'Skip diff review')
   .action(contributeCommand);
+
+program.command('ask <question>').description("Ask a question, answered from your team's context")
+  .option('--role <slug>', "Answer from a specific role's perspective")
+  .action(askCommand);
 
 program.command('pull').description('Fetch and process pending web contributions').action(pullCommand);
 program.command('reflect').description('AI rewrites shared context for clarity').action(reflectCommand);

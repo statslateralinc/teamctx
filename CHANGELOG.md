@@ -10,6 +10,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 - Open-source communication surface: roadmap, contributing guide, code of
   conduct, security policy, issue/PR templates, CI, and CODEOWNERS.
+- `/ask` endpoint, minimal web UI, and `teamctx ask "<question>" [--role <slug>]`
+  CLI command for asking questions grounded in team context.
 
 ## [0.1.0] - 2026-06-14
 

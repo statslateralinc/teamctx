@@ -95,3 +95,15 @@ export async function generateReflection(workstream, contributions, config) {
 
   return callClaude({ prompt, model: config.model, system, max_tokens: 8192 });
 }
+
+export async function answerQuestion({ sharedMd, roleMd, question, config }) {
+  const context = [
+    roleMd ? `## Your Role Context\n\n${roleMd}` : '',
+    sharedMd ? `## Shared Project Context\n\n${sharedMd}` : '',
+  ].filter(Boolean).join('\n\n---\n\n');
+
+  const system = 'You are a helpful assistant with access to the team\'s project context. Answer questions based on the context provided. Be concise and specific.';
+  const prompt = `Context:\n\n${context}\n\n---\n\nQuestion: ${question}`;
+
+  return callClaude({ prompt, model: config.model, system });
+}

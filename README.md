@@ -59,6 +59,7 @@ teamctx contribute "We decided to use AWS (Why). API migration starts next sprin
 | `teamctx role add --suggest` | AI suggests roles from current context |
 | `teamctx role list` | List all roles and their context URLs |
 | `teamctx context <role>` | Print role MD to stdout |
+| `teamctx ask "<question>" [--role <slug>]` | Ask a question, answered from your team context |
 | `teamctx pull` | Fetch and process web contributions |
 | `teamctx reflect` | AI rewrites context for clarity (run weekly) |
 | `teamctx status` | Project summary |
@@ -71,6 +72,7 @@ Deploy to Vercel to give non-technical team members two routes:
 
 - **`/context/<role>`** — downloads their role context file
 - **`/contribute`** — a plain HTML form to submit updates
+- **`/ask`** — a plain HTML form to ask a question, answered from the shared (and optional role) context
 
 Manager runs `teamctx pull` to process web submissions.
 
@@ -170,6 +172,7 @@ Every `teamctx contribute` commits and pushes to your private repo. Vercel's git
 - **Role files** are served publicly at `/context/<role>` — share URLs directly with teammates
 - `contributions.jsonl` and `config.json` are never served; they stay on the Vercel filesystem only
 - The `/contribute` form is public (no login required) — manager reviews and approves all submissions via `teamctx pull` before anything is committed
+- The `/ask` form is public too (no login required) — it only reads context to answer questions, it never writes to your repo
 
 ---
 
