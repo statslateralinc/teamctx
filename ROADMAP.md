@@ -25,8 +25,7 @@ work — and compiles a role-specific file for each person to hand to their AI t
 - **Public API + MCP server** — a stable, versioned API and an MCP server so any external AI tool or agent can read & write team context and call teamctx — *bring your own tools & agents* · [proposal](docs/proposals/external-api-and-mcp.md)
 - **Manager approval queue** — a real gate where contributions wait for a manager to approve before they enter shared context; basic roles/permissions — *managers in control* · [proposal](docs/proposals/manager-approval-queue.md)
 - 🟢 **Decisions as first-class objects** — capture source / author / date and surface them in context and `ask` — *bring your own tools & agents (distillation)*
-- **Sub-workstreams within workstreams** — let a workstream contain nested workstreams, not just a flat why/what/how tree — *structured workstreams*
-- 🟢 **Assign workstreams to team members** — give each workstream an owner — *structured workstreams*
+- **AI-suggested sub-workstreams** — when contributions blend distinct threads into one flat tree (e.g. product vision/strategy/specs vs. tech architecture/implementation), the AI proposes splitting them into sub-workstreams; the manager drives which to create and assigns team members to each — *structured workstreams · managers in control*
 
 ## Later
 - **Approve the context itself** — snapshot/version the shared context so a manager can sign off on a known-good state — *managers in control*
