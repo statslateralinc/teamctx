@@ -18,7 +18,6 @@ work — and compiles a role-specific file for each person to hand to their AI t
 [d]: https://github.com/StatsLateral/teamctx/discussions
 
 ## Now
-- 🟢 Wire up the `ask` endpoint + a minimal web UI — *ask / support*
 - **Provider-agnostic AI layer** — put the AI calls behind a small provider interface so teamctx can use Claude, OpenAI, or a local model — *no lock-in · the keystone item* · [proposal](docs/proposals/provider-agnostic-ai.md)
 
 ## Next
