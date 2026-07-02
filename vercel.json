@@ -1,6 +1,7 @@
 {
   "rewrites": [
     { "source": "/context/:role", "destination": "/api/context/[role]" },
-    { "source": "/contribute", "destination": "/api/contribute" }
+    { "source": "/contribute", "destination": "/api/contribute" },
+    { "source": "/ask", "destination": "/api/ask" }
   ]
 }
