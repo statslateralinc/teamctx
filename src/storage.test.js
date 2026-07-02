@@ -7,7 +7,7 @@ import {
   readShared, writeShared,
   appendContribution, readContributions,
   writeRoleFile, readRoleFile,
-  writeSharedMd,
+  writeSharedMd, readSharedMd,
 } from './storage.js';
 
 let dir;
@@ -73,5 +73,14 @@ describe('shared.md', () => {
     const { readFileSync } = await import('fs');
     const content = readFileSync(join(dir, 'context', 'shared.md'), 'utf-8');
     expect(content).toBe('# Project\n\n*No context.*');
+  });
+
+  it('reads shared.md written previously', () => {
+    writeSharedMd('# Project\n\nHello', dir);
+    expect(readSharedMd(dir)).toBe('# Project\n\nHello');
+  });
+
+  it('returns empty string when shared.md does not exist', () => {
+    expect(readSharedMd(dir)).toBe('');
   });
 });

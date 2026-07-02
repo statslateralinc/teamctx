@@ -63,6 +63,12 @@ export function readRoleFile(slug, dir) {
   return readFileSync(resolve(dir, 'context', 'roles', `${slug}.md`), 'utf-8');
 }
 
+export function readSharedMd(dir) {
+  const p = resolve(dir, 'context', 'shared.md');
+  if (!existsSync(p)) return '';
+  return readFileSync(p, 'utf-8');
+}
+
 export function writeSharedMd(content, dir) {
   const contextDir = resolve(dir, 'context');
   mkdirSync(contextDir, { recursive: true });
