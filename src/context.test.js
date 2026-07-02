@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { serializeToMd, updateShared, generateRoleFile } from './context.js';
+import { serializeToMd, updateShared, generateRoleFile, answerQuestion } from './context.js';
 
 vi.mock('./ai.js', () => ({
   proposeDiff: vi.fn(),
@@ -65,5 +65,38 @@ describe('generateRoleFile', () => {
     const result = await generateRoleFile(baseWs, role, 'Q3 Launch', { model: 'claude-sonnet-4-6' });
     expect(callClaude).toHaveBeenCalledOnce();
     expect(result).toContain('# CPO Context');
+  });
+});
+
+describe('answerQuestion', () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it('calls callClaude with shared and role context, returns the answer', async () => {
+    callClaude.mockResolvedValue('The launch date is Q3.');
+    const result = await answerQuestion({
+      sharedMd: '# Shared\n\nWe are launching in Q3.',
+      roleMd: '# CPO Context\n\nYou own product strategy.',
+      question: 'When do we launch?',
+      config: { model: 'claude-sonnet-4-6' },
+    });
+    expect(callClaude).toHaveBeenCalledOnce();
+    const call = callClaude.mock.calls[0][0];
+    expect(call.model).toBe('claude-sonnet-4-6');
+    expect(call.prompt).toContain('We are launching in Q3.');
+    expect(call.prompt).toContain('You own product strategy.');
+    expect(call.prompt).toContain('When do we launch?');
+    expect(result).toBe('The launch date is Q3.');
+  });
+
+  it('omits the role context section when roleMd is empty', async () => {
+    callClaude.mockResolvedValue('answer');
+    await answerQuestion({
+      sharedMd: '# Shared\n\ncontext',
+      roleMd: '',
+      question: 'q?',
+      config: { model: 'claude-sonnet-4-6' },
+    });
+    const call = callClaude.mock.calls[0][0];
+    expect(call.prompt).not.toContain('Your Role Context');
   });
 });
