@@ -1,7 +1,7 @@
 # Roadmap
 
-teamctx keeps your team's shared context — the **why / what / how** behind the
-work — and compiles a role-specific file for each person to hand to their AI tool.
+teamctx keeps your team's shared context in a simple, why / what / how format to suppport "bring your own ai tool" for small teams.
+It compiles a role-specific file for each person to bring to their AI tool without losing context.
 
 **The vision** (the bets that guide this roadmap):
 
