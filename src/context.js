@@ -78,6 +78,7 @@ export async function generateRoleFile(workstream, role, projectName, config, co
     ``,
     `## Your Why / What / How`,
     `[filter and reframe the project tree for this role — same facts, different perspective]`,
+    `[IMPORTANT: preserve any inline "*[decision — author, date, via source]*" markers verbatim on the same line as the statement they annotate. They mark human decisions and must survive the rewrite.]`,
     ``,
     `## Open Decisions (Yours to Make)`,
     `[items where this role is the decision owner — write "None currently." if none]`,
