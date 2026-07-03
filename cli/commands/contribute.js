@@ -3,13 +3,14 @@ import { readConfig, readShared, writeShared, writeSharedMd, appendContribution,
 import { updateShared, generateRoleFile, serializeToMd } from '../../src/context.js';
 import { commitContext, pushContext } from '../../src/git.js';
 
-function newContribution(text, author, tagged) {
+function newContribution(text, author, tagged, source) {
   return {
     id: `c-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
     ts: new Date().toISOString(),
     author,
     text,
     tagged: tagged || null,
+    source: source || 'cli',
     status: 'logged',
   };
 }
@@ -18,7 +19,7 @@ export async function contributeCommand(text, opts) {
   const config = readConfig();
   const workstream = readShared();
   const tagged = opts.decision ? 'decision' : null;
-  const contribution = newContribution(text, config.me, tagged);
+  const contribution = newContribution(text, config.me, tagged, opts.source);
 
   appendContribution(contribution);
   console.log(`\n→ Processing contribution from ${config.me}...`);

@@ -49,7 +49,7 @@ export async function pullCommand() {
         : item.text;
       try {
         await unlink(filePath);
-        await contributeCommand(text, { autoApprove: false, decision: false });
+        await contributeCommand(text, { autoApprove: false, decision: false, source: 'web' });
         processed++;
       } catch (err) {
         console.error(`  Error processing contribution: ${err.message}`);
