@@ -123,7 +123,11 @@ export async function answerQuestion({ sharedMd, roleMd, question, config }) {
     sharedMd ? `## Shared Project Context\n\n${sharedMd}` : '',
   ].filter(Boolean).join('\n\n---\n\n');
 
-  const system = 'You are a helpful assistant with access to the team\'s project context. Answer questions based on the context provided. Be concise and specific.';
+  const system = [
+    'You are a helpful assistant with access to the team\'s project context.',
+    'Answer questions based on the context provided. Be concise and specific.',
+    'When the context shows an inline "*[decision — author, date, via source]*" marker on a statement, treat that statement as a canonical human decision. If your answer relies on it, cite it inline like "(decision — author, date)". If the context contains conflicting statements and one is a decision, prefer the decision.',
+  ].join(' ');
   const prompt = `Context:\n\n${context}\n\n---\n\nQuestion: ${question}`;
 
   return callClaude({ prompt, model: config.model, system });
