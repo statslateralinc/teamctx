@@ -10,7 +10,7 @@ import {
 import { updateShared, generateRoleFile, serializeToMd, answerQuestion } from '../src/context.js';
 import { commitContext, pushContext } from '../src/git.js';
 
-const TOOLS = [
+export const TOOLS = [
   {
     name: 'get_context',
     description: 'Fetch the full Why/What/How tree for the current teamctx project as JSON.',
@@ -118,7 +118,7 @@ async function handleSubmitContribution({ text, author }) {
   return textResult({ id: contribution.id, summary, operations });
 }
 
-const HANDLERS = {
+export const HANDLERS = {
   get_context: handleGetContext,
   get_role_context: handleGetRoleContext,
   ask: handleAsk,
