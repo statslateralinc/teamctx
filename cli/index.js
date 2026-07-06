@@ -13,6 +13,7 @@ import { contextCommand } from './commands/context.js';
 import { statusCommand } from './commands/status.js';
 import { configModelCommand, configGithubRawBaseCommand, configManagerEmailCommand, configDeployUrlCommand } from './commands/config.js';
 import { setupCommand } from './commands/setup.js';
+import { mcpCommand } from './commands/mcp.js';
 
 program.name('teamctx').description('AI-native version control for team context').version('0.1.0');
 
@@ -36,6 +37,7 @@ program.command('pull').description('Fetch and process pending web contributions
 program.command('reflect').description('AI rewrites shared context for clarity').action(reflectCommand);
 program.command('context <role>').description('Print role context MD to stdout').action(contextCommand);
 program.command('status').description('Show project summary').action(statusCommand);
+program.command('mcp').description('Start MCP server over stdio (for Claude Code, Claude Desktop, Cursor, etc.)').action(mcpCommand);
 
 const config = program.command('config').description('View or change project settings');
 config.command('model [value]').description('Get or set the AI model').action(configModelCommand);
