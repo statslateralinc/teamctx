@@ -130,10 +130,27 @@ teamctx resolves *which* project to use in this order:
 
 #### Claude Code
 
-Open `~/.claude.json` (Windows: `%USERPROFILE%\.claude.json`). Find or add
-an `mcpServers` key at the top level and merge in the paste-in block from
-above. Restart Claude Code, then check with `claude mcp list` — you should
-see `teamctx` as connected. In a session, `/mcp` lists it too.
+Replace the two placeholders with your project path (**forward slashes
+even on Windows** — claude's JSON validator rejects backslashes) and
+API key.
+
+macOS / Linux:
+
+```bash
+claude mcp add-json teamctx --scope user \
+  '{"command":"teamctx","args":["mcp","--project","/path/to/your/project"],"env":{"ANTHROPIC_API_KEY":"sk-ant-..."}}'
+```
+
+Windows PowerShell (double quotes need `\"`):
+
+```powershell
+claude mcp add-json teamctx --scope user `
+  '{\"command\":\"teamctx\",\"args\":[\"mcp\",\"--project\",\"D:/path/to/your/project\"],\"env\":{\"ANTHROPIC_API_KEY\":\"sk-ant-...\"}}'
+```
+
+`--scope user` makes it available from every `claude` session regardless
+of the launch directory. Verify with `claude mcp list` — you should see
+`teamctx: ... ✔ Connected`.
 
 #### Cursor / Cline / Antigravity / other MCP clients
 
