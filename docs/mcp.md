@@ -1,8 +1,11 @@
 # MCP Server
 
 teamctx ships an [MCP](https://modelcontextprotocol.io) server so any MCP-aware
-client (Claude Code, Claude Desktop, Cursor, and others) can read and write
-your team context as tools.
+client (Claude Code, Claude Desktop, Cursor, Cline, Antigravity, and others) can
+read and write your team context as tools.
+
+For end-user setup, see the "Use teamctx from your AI tool (MCP)" section in the
+[README](../README.md). This file is the technical reference.
 
 ## Tools exposed
 
@@ -13,55 +16,51 @@ your team context as tools.
 | `ask` | Answer a question using shared context (and optionally a role's perspective). |
 | `submit_contribution` | Add a contribution; AI updates the tree, regenerates role files, commits. |
 
-## Requirements
+## Project-dir resolution
 
-- `teamctx` installed on your PATH (`npm i -g teamctx`).
-- A teamctx project on disk (the folder that contains `.teamctx/`).
-- The AI provider key available in the environment the MCP client passes through
-  (e.g. `ANTHROPIC_API_KEY`).
+The server needs to know which `.teamctx/` project to operate on. It resolves
+this in strict priority order:
 
-## Claude Code / Claude Desktop
+1. `--project <path>` (or `-p <path>`, or `--project=<path>`) on the command
+2. `TEAMCTX_PROJECT_DIR` environment variable
+3. The process's working directory at spawn time
 
-Add the following to your client config (Claude Desktop:
-`~/Library/Application Support/Claude/claude_desktop_config.json` on macOS,
-`%APPDATA%\Claude\claude_desktop_config.json` on Windows; Claude Code: see
-`claude mcp` docs):
+The `cwd` field in MCP client configs is unreliable on Windows because of how
+npm-installed `.cmd` shims interact with client spawn semantics. **Prefer
+`--project` or the env var**; do not rely on `cwd`.
+
+Dir resolution is lazy — the server always starts cleanly. If the resolved
+path has no `.teamctx/`, the error surfaces only when a tool is called
+(`Not in a teamctx project`), which lets the client at least list tools.
+
+## Environment variables
+
+- `ANTHROPIC_API_KEY` — required for `ask` and `submit_contribution`. Pass it
+  via the client's `env` block, export it in your shell, or place it in
+  `.env.local` at the project root (the server loads that automatically).
+- `TEAMCTX_PROJECT_DIR` — optional override for the project path.
+
+## Config example (any client)
 
 ```json
 {
   "mcpServers": {
     "teamctx": {
       "command": "teamctx",
-      "args": ["mcp"],
-      "cwd": "/absolute/path/to/your/teamctx/project"
+      "args": ["mcp", "--project", "/absolute/path/to/your/teamctx/project"],
+      "env": { "ANTHROPIC_API_KEY": "sk-ant-..." }
     }
   }
 }
 ```
 
-`cwd` is required — the server reads `.teamctx/` from there. If you work in
-multiple teamctx projects, register one entry per project with a distinct name
-(e.g. `teamctx-web`, `teamctx-mobile`).
-
-## Cursor
-
-Cursor uses the same MCP config shape. Add the block above under Cursor's MCP
-settings.
-
-## Manual test
-
-```
-teamctx mcp
-```
-
-Nothing prints — the server is waiting on stdio. Kill it with Ctrl+C. Confirm it
-works end-to-end by registering it with a client and asking the model to call
-`get_context`.
+For multiple projects, use one entry per project with a distinct server name.
 
 ## Notes
 
 - Contributions submitted via MCP are committed to git with `(via mcp)` in the
-  commit message so they are easy to spot in `git log`.
+  commit message so they're easy to spot in `git log`.
 - No auth — the server has full local filesystem access, same as the CLI.
-- stdio transport only. HTTP transport is a follow-up once the `/api/v1/*`
-  surface lands (see [external-api-and-mcp.md](proposals/external-api-and-mcp.md)).
+- stdio transport only. Remote/HTTP transport is a follow-up once the
+  `/api/v1/*` surface lands (see
+  [external-api-and-mcp.md](proposals/external-api-and-mcp.md)).
