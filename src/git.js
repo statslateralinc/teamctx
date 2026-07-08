@@ -11,19 +11,20 @@ export async function checkGitRepo() {
   }
 }
 
-export async function commitContext(message) {
-  await execFileAsync('git', ['add', '.teamctx/']);
+export async function commitContext(message, { cwd } = {}) {
+  const opts = cwd ? { cwd } : undefined;
+  await execFileAsync('git', ['add', '.teamctx/'], opts);
   try {
-    await execFileAsync('git', ['commit', '-m', message]);
+    await execFileAsync('git', ['commit', '-m', message], opts);
   } catch (err) {
     if (!String(err.stdout || '').includes('nothing to commit')) throw err;
   }
 }
 
-export async function pushContext() {
-  await execFileAsync('git', ['push']);
+export async function pushContext({ cwd } = {}) {
+  await execFileAsync('git', ['push'], cwd ? { cwd } : undefined);
 }
 
-export async function pullContext() {
-  await execFileAsync('git', ['pull', '--no-rebase']);
+export async function pullContext({ cwd } = {}) {
+  await execFileAsync('git', ['pull', '--no-rebase'], cwd ? { cwd } : undefined);
 }
