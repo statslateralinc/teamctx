@@ -73,18 +73,19 @@ function textResult(value) {
 }
 
 export function makeHandlers(projectRoot) {
-  const teamctxDir = getTeamctxDir(projectRoot);
+  const dir = () => getTeamctxDir(projectRoot);
 
   return {
     async get_context() {
-      return textResult(readShared(teamctxDir));
+      return textResult(readShared(dir()));
     },
 
     async get_role_context({ role }) {
-      return textResult(readRoleFile(role, teamctxDir));
+      return textResult(readRoleFile(role, dir()));
     },
 
     async ask({ question, role }) {
+      const teamctxDir = dir();
       const config = readConfig(teamctxDir);
       let roleMd = '';
       if (role) {
@@ -101,6 +102,7 @@ export function makeHandlers(projectRoot) {
     },
 
     async submit_contribution({ text, author }) {
+      const teamctxDir = dir();
       const config = readConfig(teamctxDir);
       const workstream = readShared(teamctxDir);
       const contribution = {
@@ -160,8 +162,8 @@ export function buildServer(projectRoot) {
   return server;
 }
 
-export async function startMcpServer() {
-  const projectRoot = resolveProjectDir();
+export async function startMcpServer({ projectDir } = {}) {
+  const projectRoot = projectDir ? pathResolve(projectDir) : resolveProjectDir();
   const envLocalPath = join(projectRoot, '.env.local');
   if (existsSync(envLocalPath)) dotenv.config({ path: envLocalPath });
 

@@ -90,11 +90,12 @@ describe('TOOLS list', () => {
 });
 
 describe('buildServer', () => {
-  it('returns a Server instance with request handlers registered', () => {
+  it('returns a Server instance without eagerly resolving the teamctx dir', () => {
     const server = buildServer(ROOT);
     expect(server).toBeTruthy();
     expect(typeof server.connect).toBe('function');
-    expect(getTeamctxDir).toHaveBeenCalledWith(ROOT);
+    // dir resolution must be lazy so the server can start even if .teamctx is missing
+    expect(getTeamctxDir).not.toHaveBeenCalled();
   });
 });
 

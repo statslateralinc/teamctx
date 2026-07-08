@@ -37,7 +37,9 @@ program.command('pull').description('Fetch and process pending web contributions
 program.command('reflect').description('AI rewrites shared context for clarity').action(reflectCommand);
 program.command('context <role>').description('Print role context MD to stdout').action(contextCommand);
 program.command('status').description('Show project summary').action(statusCommand);
-program.command('mcp').description('Start MCP server over stdio (for Claude Code, Claude Desktop, Cursor, etc.)').action(mcpCommand);
+program.command('mcp').description('Start MCP server over stdio (for Claude Code, Claude Desktop, Cursor, etc.)')
+  .option('-p, --project <path>', 'Absolute path to the teamctx project (defaults to $TEAMCTX_PROJECT_DIR or cwd)')
+  .action(mcpCommand);
 
 const config = program.command('config').description('View or change project settings');
 config.command('model [value]').description('Get or set the AI model').action(configModelCommand);

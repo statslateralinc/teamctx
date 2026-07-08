@@ -1,4 +1,4 @@
-export async function mcpCommand() {
+export async function mcpCommand(opts) {
   const { startMcpServer } = await import('../../mcp/server.js');
-  await startMcpServer();
+  await startMcpServer({ projectDir: opts?.project });
 }
