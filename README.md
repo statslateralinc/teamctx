@@ -130,26 +130,10 @@ teamctx resolves *which* project to use in this order:
 
 #### Claude Code
 
-From inside your teamctx project directory:
-
-```bash
-claude mcp add teamctx \
-  -e TEAMCTX_PROJECT_DIR="$PWD" \
-  -e ANTHROPIC_API_KEY=sk-ant-... \
-  -- teamctx mcp
-```
-
-On Windows PowerShell:
-
-```powershell
-claude mcp add teamctx `
-  -e TEAMCTX_PROJECT_DIR="$PWD" `
-  -e ANTHROPIC_API_KEY=sk-ant-... `
-  -- teamctx mcp
-```
-
-Verify with `claude mcp list`. In a Claude Code session, `/mcp` shows
-connected servers.
+Open `~/.claude.json` (Windows: `%USERPROFILE%\.claude.json`). Find or add
+an `mcpServers` key at the top level and merge in the paste-in block from
+above. Restart Claude Code, then check with `claude mcp list` — you should
+see `teamctx` as connected. In a session, `/mcp` lists it too.
 
 #### Cursor / Cline / Antigravity / other MCP clients
 
