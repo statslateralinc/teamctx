@@ -55,6 +55,40 @@ Scope is intentionally narrow — this is Part B of the proposal, done standalon
 - [ ] **10. Delete this plan file before opening the PR**
       Or move it to a PR-description draft — either way, don't ship the plan.
 
+## Findings from smoke-testing (2026-07-07)
+
+- **Claude Code (CLI):** works out of the box because it inherits its own `cwd`
+  and the user was already inside the teamctx project.
+- **Claude Desktop (Windows):** tools loaded and appeared in the UI, but every
+  `tools/call` returned `Not in a teamctx project. Run 'teamctx init' first.`
+  Root cause: the `cwd` field in `claude_desktop_config.json` is **not reliably
+  honored** on Windows (npm `.cmd` shim + client spawn semantics). The server
+  spawns from Claude Desktop's install dir, `getTeamctxDir()` walks up from
+  there, finds no `.teamctx/`, and errors.
+
+## Follow-up (must land before PR)
+
+- [ ] **11. Add explicit project-dir resolution to `teamctx mcp`**
+      Priority order: `--project <path>` CLI arg > `TEAMCTX_PROJECT_DIR` env var
+      > `process.cwd()` fallback. Server passes resolved dir into every storage
+      call and into `commitContext` / `pushContext` via a new `cwd` option.
+      Also load `.env.local` from the resolved dir (not just cwd) so an API key
+      colocated with the project keeps working.
+
+- [ ] **12. Support multiple teamctx projects simultaneously**
+      Design: the user adds one MCP server entry per project (`teamctx-web`,
+      `teamctx-mobile`), each with a different `--project`. Standard MCP
+      per-scope pattern — same as filesystem MCP with per-root config.
+
+- [ ] **13. README section for end users**
+      Windows-first, client-agnostic. Show the "Edit Config" path in Claude
+      Desktop (Settings → Developer) rather than filesystem paths. Cover Claude
+      Code, Claude Desktop, and note that Cursor/Antigravity/Cline use the same
+      JSON shape.
+
+- [ ] **14. Tests for the new resolution logic**
+      argv wins over env; env wins over cwd; cwd fallback still works.
+
 ## Commit strategy
 
 Small commits, single author (Satyagya), no Co-Authored-By trailers. Rough grouping:
