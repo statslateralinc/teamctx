@@ -133,12 +133,23 @@ teamctx resolves *which* project to use in this order:
 From inside your teamctx project directory:
 
 ```bash
-claude mcp add teamctx -- teamctx mcp --project "$PWD"
+claude mcp add teamctx \
+  -e TEAMCTX_PROJECT_DIR="$PWD" \
+  -e ANTHROPIC_API_KEY=sk-ant-... \
+  -- teamctx mcp
 ```
 
-That registers the server in your Claude Code config. Verify with
-`claude mcp list`. In a Claude Code session, `/mcp` shows connected
-servers.
+On Windows PowerShell:
+
+```powershell
+claude mcp add teamctx `
+  -e TEAMCTX_PROJECT_DIR="$PWD" `
+  -e ANTHROPIC_API_KEY=sk-ant-... `
+  -- teamctx mcp
+```
+
+Verify with `claude mcp list`. In a Claude Code session, `/mcp` shows
+connected servers.
 
 #### Cursor / Cline / Antigravity / other MCP clients
 
