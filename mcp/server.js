@@ -1,7 +1,11 @@
+import { existsSync } from 'fs';
+import { resolve as pathResolve, join } from 'path';
+import dotenv from 'dotenv';
 import { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { CallToolRequestSchema, ListToolsRequestSchema } from '@modelcontextprotocol/sdk/types.js';
 import {
+  getTeamctxDir,
   readConfig, readShared, writeShared,
   readSharedMd, writeSharedMd,
   readRoleFile, writeRoleFile,
@@ -9,6 +13,15 @@ import {
 } from '../src/storage.js';
 import { updateShared, generateRoleFile, serializeToMd, answerQuestion } from '../src/context.js';
 import { commitContext, pushContext } from '../src/git.js';
+
+export function resolveProjectDir(argv = process.argv.slice(2), env = process.env, cwd = process.cwd()) {
+  const flagIdx = argv.findIndex(a => a === '--project' || a === '-p');
+  if (flagIdx !== -1 && argv[flagIdx + 1]) return pathResolve(argv[flagIdx + 1]);
+  const eqArg = argv.find(a => a.startsWith('--project='));
+  if (eqArg) return pathResolve(eqArg.slice('--project='.length));
+  if (env.TEAMCTX_PROJECT_DIR) return pathResolve(env.TEAMCTX_PROJECT_DIR);
+  return cwd;
+}
 
 export const TOOLS = [
   {
@@ -59,73 +72,74 @@ function textResult(value) {
   return { content: [{ type: 'text', text }] };
 }
 
-async function handleGetContext() {
-  return textResult(readShared());
-}
+export function makeHandlers(projectRoot) {
+  const teamctxDir = getTeamctxDir(projectRoot);
 
-async function handleGetRoleContext({ role }) {
-  return textResult(readRoleFile(role));
-}
+  return {
+    async get_context() {
+      return textResult(readShared(teamctxDir));
+    },
 
-async function handleAsk({ question, role }) {
-  const config = readConfig();
-  let roleMd = '';
-  if (role) {
-    const found = (config.roles || []).find(r => r.slug === role);
-    if (!found) {
-      const available = (config.roles || []).map(r => r.slug).join(', ') || '(none)';
-      throw new Error(`No role "${role}". Available: ${available}`);
-    }
-    roleMd = readRoleFile(role);
-  }
-  const sharedMd = readSharedMd();
-  const answer = await answerQuestion({ sharedMd, roleMd, question, config });
-  return textResult(answer);
-}
+    async get_role_context({ role }) {
+      return textResult(readRoleFile(role, teamctxDir));
+    },
 
-async function handleSubmitContribution({ text, author }) {
-  const config = readConfig();
-  const workstream = readShared();
-  const contribution = {
-    id: `mcp-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
-    ts: new Date().toISOString(),
-    author: author || config.me,
-    text,
-    tagged: null,
-    status: 'logged',
+    async ask({ question, role }) {
+      const config = readConfig(teamctxDir);
+      let roleMd = '';
+      if (role) {
+        const found = (config.roles || []).find(r => r.slug === role);
+        if (!found) {
+          const available = (config.roles || []).map(r => r.slug).join(', ') || '(none)';
+          throw new Error(`No role "${role}". Available: ${available}`);
+        }
+        roleMd = readRoleFile(role, teamctxDir);
+      }
+      const sharedMd = readSharedMd(teamctxDir);
+      const answer = await answerQuestion({ sharedMd, roleMd, question, config });
+      return textResult(answer);
+    },
+
+    async submit_contribution({ text, author }) {
+      const config = readConfig(teamctxDir);
+      const workstream = readShared(teamctxDir);
+      const contribution = {
+        id: `mcp-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+        ts: new Date().toISOString(),
+        author: author || config.me,
+        text,
+        tagged: null,
+        status: 'logged',
+      };
+      appendContribution(contribution, teamctxDir);
+
+      const { workstream: updated, summary, operations } = await updateShared(workstream, contribution, config);
+
+      if (!operations || operations.length === 0) {
+        return textResult({ id: contribution.id, summary: 'No changes to context tree (contribution logged).', operations: [] });
+      }
+
+      writeShared(updated, teamctxDir);
+      writeSharedMd(serializeToMd(updated, config.project, contribution.author), teamctxDir);
+
+      for (const role of config.roles || []) {
+        const md = await generateRoleFile(updated, role, config.project, config);
+        writeRoleFile(role.slug, md, teamctxDir);
+      }
+
+      await commitContext(`context: ${contribution.author} contribution (via mcp)`, { cwd: projectRoot });
+      if (config.autoPush) {
+        try { await pushContext({ cwd: projectRoot }); } catch { /* non-fatal */ }
+      }
+
+      return textResult({ id: contribution.id, summary, operations });
+    },
   };
-  appendContribution(contribution);
-
-  const { workstream: updated, summary, operations } = await updateShared(workstream, contribution, config);
-
-  if (!operations || operations.length === 0) {
-    return textResult({ id: contribution.id, summary: 'No changes to context tree (contribution logged).', operations: [] });
-  }
-
-  writeShared(updated);
-  writeSharedMd(serializeToMd(updated, config.project, contribution.author));
-
-  for (const role of config.roles || []) {
-    const md = await generateRoleFile(updated, role, config.project, config);
-    writeRoleFile(role.slug, md);
-  }
-
-  await commitContext(`context: ${contribution.author} contribution (via mcp)`);
-  if (config.autoPush) {
-    try { await pushContext(); } catch { /* client already has the summary; push failure is non-fatal here */ }
-  }
-
-  return textResult({ id: contribution.id, summary, operations });
 }
 
-export const HANDLERS = {
-  get_context: handleGetContext,
-  get_role_context: handleGetRoleContext,
-  ask: handleAsk,
-  submit_contribution: handleSubmitContribution,
-};
+export function buildServer(projectRoot) {
+  const handlers = makeHandlers(projectRoot);
 
-export function buildServer() {
   const server = new Server(
     { name: 'teamctx', version: '0.1.0' },
     { capabilities: { tools: {} } },
@@ -134,7 +148,7 @@ export function buildServer() {
   server.setRequestHandler(ListToolsRequestSchema, async () => ({ tools: TOOLS }));
 
   server.setRequestHandler(CallToolRequestSchema, async (req) => {
-    const handler = HANDLERS[req.params.name];
+    const handler = handlers[req.params.name];
     if (!handler) throw new Error(`Unknown tool: ${req.params.name}`);
     try {
       return await handler(req.params.arguments || {});
@@ -147,7 +161,11 @@ export function buildServer() {
 }
 
 export async function startMcpServer() {
-  const server = buildServer();
+  const projectRoot = resolveProjectDir();
+  const envLocalPath = join(projectRoot, '.env.local');
+  if (existsSync(envLocalPath)) dotenv.config({ path: envLocalPath });
+
+  const server = buildServer(projectRoot);
   const transport = new StdioServerTransport();
   await server.connect(transport);
 }

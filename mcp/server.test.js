@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 vi.mock('../src/storage.js', () => ({
+  getTeamctxDir: vi.fn((root) => `${root}/.teamctx`),
   readConfig: vi.fn(),
   readShared: vi.fn(),
   writeShared: vi.fn(),
@@ -23,8 +24,9 @@ vi.mock('../src/git.js', () => ({
   pushContext: vi.fn(),
 }));
 
-import { TOOLS, HANDLERS, buildServer } from './server.js';
+import { TOOLS, makeHandlers, buildServer, resolveProjectDir } from './server.js';
 import {
+  getTeamctxDir,
   readConfig, readShared, writeShared,
   readSharedMd, writeSharedMd,
   readRoleFile, writeRoleFile,
@@ -35,8 +37,42 @@ import { commitContext, pushContext } from '../src/git.js';
 
 const baseWs = { id: 'main', name: 'Demo', whys: [] };
 const baseConfig = { project: 'Demo', me: 'alice', model: 'claude-sonnet-4-6', roles: [], autoPush: false };
+const ROOT = '/proj';
+const TDIR = '/proj/.teamctx';
 
 beforeEach(() => vi.clearAllMocks());
+
+describe('resolveProjectDir', () => {
+  it('prefers --project <path>', () => {
+    const r = resolveProjectDir(['mcp', '--project', '/a/b'], {}, '/cwd');
+    expect(r).toMatch(/[/\\]a[/\\]b$/);
+  });
+
+  it('prefers --project=<path>', () => {
+    const r = resolveProjectDir(['mcp', '--project=/x/y'], {}, '/cwd');
+    expect(r).toMatch(/[/\\]x[/\\]y$/);
+  });
+
+  it('prefers -p as short form', () => {
+    const r = resolveProjectDir(['mcp', '-p', '/short/path'], {}, '/cwd');
+    expect(r).toMatch(/[/\\]short[/\\]path$/);
+  });
+
+  it('falls back to TEAMCTX_PROJECT_DIR when no flag', () => {
+    const r = resolveProjectDir(['mcp'], { TEAMCTX_PROJECT_DIR: '/from/env' }, '/cwd');
+    expect(r).toMatch(/[/\\]from[/\\]env$/);
+  });
+
+  it('flag beats env var', () => {
+    const r = resolveProjectDir(['mcp', '--project', '/from/flag'], { TEAMCTX_PROJECT_DIR: '/from/env' }, '/cwd');
+    expect(r).toMatch(/[/\\]from[/\\]flag$/);
+  });
+
+  it('falls back to cwd when neither flag nor env is set', () => {
+    const r = resolveProjectDir(['mcp'], {}, '/the/cwd');
+    expect(r).toBe('/the/cwd');
+  });
+});
 
 describe('TOOLS list', () => {
   it('exposes exactly the four expected tools', () => {
@@ -55,26 +91,29 @@ describe('TOOLS list', () => {
 
 describe('buildServer', () => {
   it('returns a Server instance with request handlers registered', () => {
-    const server = buildServer();
+    const server = buildServer(ROOT);
     expect(server).toBeTruthy();
     expect(typeof server.connect).toBe('function');
+    expect(getTeamctxDir).toHaveBeenCalledWith(ROOT);
   });
 });
 
 describe('get_context', () => {
-  it('returns the workstream JSON as text content', async () => {
+  it('returns the workstream JSON as text content and reads from the resolved teamctx dir', async () => {
     readShared.mockReturnValue(baseWs);
-    const result = await HANDLERS.get_context({});
-    expect(result.content[0].type).toBe('text');
+    const handlers = makeHandlers(ROOT);
+    const result = await handlers.get_context({});
+    expect(readShared).toHaveBeenCalledWith(TDIR);
     expect(JSON.parse(result.content[0].text)).toEqual(baseWs);
   });
 });
 
 describe('get_role_context', () => {
-  it('returns the role markdown for a valid slug', async () => {
+  it('reads the role markdown from the resolved teamctx dir', async () => {
     readRoleFile.mockReturnValue('# CPO Context\n\n...');
-    const result = await HANDLERS.get_role_context({ role: 'cpo' });
-    expect(readRoleFile).toHaveBeenCalledWith('cpo');
+    const handlers = makeHandlers(ROOT);
+    const result = await handlers.get_role_context({ role: 'cpo' });
+    expect(readRoleFile).toHaveBeenCalledWith('cpo', TDIR);
     expect(result.content[0].text).toContain('# CPO Context');
   });
 });
@@ -85,7 +124,10 @@ describe('ask', () => {
     readSharedMd.mockReturnValue('# Shared');
     answerQuestion.mockResolvedValue('The answer.');
 
-    const result = await HANDLERS.ask({ question: 'What?' });
+    const handlers = makeHandlers(ROOT);
+    const result = await handlers.ask({ question: 'What?' });
+    expect(readConfig).toHaveBeenCalledWith(TDIR);
+    expect(readSharedMd).toHaveBeenCalledWith(TDIR);
     expect(answerQuestion).toHaveBeenCalledWith(expect.objectContaining({
       sharedMd: '# Shared', roleMd: '', question: 'What?',
     }));
@@ -98,19 +140,22 @@ describe('ask', () => {
     readRoleFile.mockReturnValue('# CPO');
     answerQuestion.mockResolvedValue('answer');
 
-    await HANDLERS.ask({ question: 'q?', role: 'cpo' });
+    const handlers = makeHandlers(ROOT);
+    await handlers.ask({ question: 'q?', role: 'cpo' });
+    expect(readRoleFile).toHaveBeenCalledWith('cpo', TDIR);
     expect(answerQuestion).toHaveBeenCalledWith(expect.objectContaining({ roleMd: '# CPO' }));
   });
 
   it('throws a helpful error when the role does not exist', async () => {
     readConfig.mockReturnValue({ ...baseConfig, roles: [{ slug: 'cpo' }] });
-    await expect(HANDLERS.ask({ question: 'q?', role: 'ghost' }))
+    const handlers = makeHandlers(ROOT);
+    await expect(handlers.ask({ question: 'q?', role: 'ghost' }))
       .rejects.toThrow(/No role "ghost"/);
   });
 });
 
 describe('submit_contribution', () => {
-  it('appends, updates shared, writes files, commits, and returns the summary', async () => {
+  it('appends, updates shared, writes files, commits with resolved cwd, and returns the summary', async () => {
     readConfig.mockReturnValue({ ...baseConfig, roles: [] });
     readShared.mockReturnValue(baseWs);
     updateShared.mockResolvedValue({
@@ -119,13 +164,13 @@ describe('submit_contribution', () => {
       operations: [{ type: 'addWhy', text: 'x' }],
     });
 
-    const result = await HANDLERS.submit_contribution({ text: 'new note' });
+    const handlers = makeHandlers(ROOT);
+    const result = await handlers.submit_contribution({ text: 'new note' });
 
-    expect(appendContribution).toHaveBeenCalledOnce();
-    expect(updateShared).toHaveBeenCalledOnce();
-    expect(writeShared).toHaveBeenCalledOnce();
-    expect(writeSharedMd).toHaveBeenCalledOnce();
-    expect(commitContext).toHaveBeenCalledWith(expect.stringMatching(/via mcp/));
+    expect(appendContribution).toHaveBeenCalledWith(expect.any(Object), TDIR);
+    expect(writeShared).toHaveBeenCalledWith(expect.any(Object), TDIR);
+    expect(writeSharedMd).toHaveBeenCalledWith(expect.any(String), TDIR);
+    expect(commitContext).toHaveBeenCalledWith(expect.stringMatching(/via mcp/), { cwd: ROOT });
     expect(pushContext).not.toHaveBeenCalled();
 
     const payload = JSON.parse(result.content[0].text);
@@ -139,10 +184,11 @@ describe('submit_contribution', () => {
     readShared.mockReturnValue(baseWs);
     updateShared.mockResolvedValue({ workstream: baseWs, summary: 's', operations: [{ type: 'addWhy' }] });
 
-    await HANDLERS.submit_contribution({ text: 't', author: 'bob' });
+    const handlers = makeHandlers(ROOT);
+    await handlers.submit_contribution({ text: 't', author: 'bob' });
     const written = appendContribution.mock.calls[0][0];
     expect(written.author).toBe('bob');
-    expect(commitContext).toHaveBeenCalledWith(expect.stringContaining('bob'));
+    expect(commitContext).toHaveBeenCalledWith(expect.stringContaining('bob'), { cwd: ROOT });
   });
 
   it('regenerates each role file when config has roles', async () => {
@@ -151,9 +197,11 @@ describe('submit_contribution', () => {
     updateShared.mockResolvedValue({ workstream: baseWs, summary: 's', operations: [{ type: 'addWhy' }] });
     generateRoleFile.mockResolvedValue('# role md');
 
-    await HANDLERS.submit_contribution({ text: 't' });
+    const handlers = makeHandlers(ROOT);
+    await handlers.submit_contribution({ text: 't' });
     expect(generateRoleFile).toHaveBeenCalledTimes(2);
     expect(writeRoleFile).toHaveBeenCalledTimes(2);
+    expect(writeRoleFile).toHaveBeenCalledWith('cpo', expect.any(String), TDIR);
   });
 
   it('short-circuits without writing when no operations are proposed', async () => {
@@ -161,7 +209,8 @@ describe('submit_contribution', () => {
     readShared.mockReturnValue(baseWs);
     updateShared.mockResolvedValue({ workstream: baseWs, summary: 's', operations: [] });
 
-    const result = await HANDLERS.submit_contribution({ text: 't' });
+    const handlers = makeHandlers(ROOT);
+    const result = await handlers.submit_contribution({ text: 't' });
     expect(writeShared).not.toHaveBeenCalled();
     expect(writeSharedMd).not.toHaveBeenCalled();
     expect(commitContext).not.toHaveBeenCalled();
@@ -174,8 +223,9 @@ describe('submit_contribution', () => {
     updateShared.mockResolvedValue({ workstream: baseWs, summary: 's', operations: [{ type: 'addWhy' }] });
     pushContext.mockRejectedValueOnce(new Error('no remote'));
 
-    const result = await HANDLERS.submit_contribution({ text: 't' });
-    expect(pushContext).toHaveBeenCalledOnce();
+    const handlers = makeHandlers(ROOT);
+    const result = await handlers.submit_contribution({ text: 't' });
+    expect(pushContext).toHaveBeenCalledWith({ cwd: ROOT });
     expect(result.content[0].text).toContain('summary');
   });
 });
