@@ -1,5 +1,8 @@
-import { readConfig, writeConfig, readWorkstream, listWorkstreamIds } from '../../src/storage.js';
-import { proposeSubworkstreams } from '../../src/context.js';
+import { ask } from '../prompt.js';
+import { readConfig, writeConfig, readWorkstream, writeWorkstream, writeWorkstreamMd, listWorkstreamIds, writeRoleFile } from '../../src/storage.js';
+import { proposeSubworkstreams, serializeToMd, generateRoleFile } from '../../src/context.js';
+import { commitContext, pushContext } from '../../src/git.js';
+import { slugify } from '../../src/roles.js';
 
 function workstreamMeta(config, id) {
   return (config.workstreams || []).find(w => w.id === id);
@@ -65,6 +68,135 @@ export async function workstreamListCommand() {
     console.log(`      ${ws.whys.length} Why nodes · roles: ${roles.length ? roles.join(', ') : '(none)'}`);
   });
   console.log('\n  * = active workstream (target of `contribute` when --workstream is omitted)\n');
+}
+
+export async function workstreamSplitCommand(opts = {}) {
+  const config = readConfig();
+  const activeId = config.activeWorkstream || 'main';
+  const source = readWorkstream(activeId);
+
+  if ((source.whys || []).length < 2) {
+    console.log(`\nWorkstream "${activeId}" has fewer than 2 Why nodes — nothing to split.\n`);
+    return;
+  }
+
+  console.log(`\n→ Analyzing workstream "${activeId}" for candidate splits...`);
+  const { splits: proposals } = await proposeSubworkstreams(source, config, config.roles || []);
+
+  if (proposals.length === 0) {
+    console.log('No clean split proposed. The current workstream reads as one thread.\n');
+    return;
+  }
+
+  const accepted = [];
+  for (const proposal of proposals) {
+    console.log(`\n  Proposed: ${proposal.name}`);
+    if (proposal.rationale) console.log(`    ${proposal.rationale}`);
+    proposal.whyIds.forEach(id => {
+      const why = source.whys.find(w => w.id === id);
+      if (why) console.log(`    - ${why.text}`);
+    });
+
+    if (opts.acceptAll) {
+      accepted.push(proposal);
+      continue;
+    }
+    const answer = (await ask(`  Accept? (y/n/rename)`, 'y')).toLowerCase();
+    if (answer === 'rename' || answer === 'r') {
+      const newName = await ask('  New name');
+      if (!newName) { console.log('  Skipped.'); continue; }
+      accepted.push({ ...proposal, name: newName });
+    } else if (answer === 'y' || answer === 'yes' || answer === '') {
+      accepted.push(proposal);
+    } else {
+      console.log('  Skipped.');
+    }
+  }
+
+  if (accepted.length === 0) {
+    console.log('\nNo splits accepted.\n');
+    return;
+  }
+
+  for (const split of accepted) {
+    const fresh = { source: readWorkstream(activeId), config: readConfig() };
+    await applySplit({
+      source: fresh.source,
+      sourceId: activeId,
+      split,
+      config: fresh.config,
+      acceptAll: !!opts.acceptAll,
+    });
+  }
+
+  console.log('\n✓ Split complete.\n');
+}
+
+async function applySplit({ source, sourceId, split, config, acceptAll }) {
+  const existingIds = new Set([...(config.workstreams || []).map(w => w.id), ...listWorkstreamIds()]);
+  let newId = slugify(split.name);
+  if (!newId) {
+    console.error(`  Error: split name "${split.name}" produced an empty id. Skipping.`);
+    return;
+  }
+  if (existingIds.has(newId)) {
+    console.error(`  Error: workstream id "${newId}" already exists. Skipping "${split.name}".`);
+    return;
+  }
+
+  const movingWhys = source.whys.filter(w => split.whyIds.includes(w.id));
+  if (movingWhys.length === 0) {
+    console.error(`  Error: no matching Why nodes for "${split.name}" (source may have changed). Skipping.`);
+    return;
+  }
+  const remainingWhys = source.whys.filter(w => !split.whyIds.includes(w.id));
+  const newWs = { id: newId, name: split.name, whys: movingWhys };
+  const updatedSource = { ...source, whys: remainingWhys };
+
+  writeWorkstream(newId, newWs);
+  writeWorkstreamMd(newId, serializeToMd(newWs, split.name));
+  writeWorkstream(sourceId, updatedSource);
+  const sourceName = config.workstreams?.find(w => w.id === sourceId)?.name || source.name || sourceId;
+  writeWorkstreamMd(sourceId, serializeToMd(updatedSource, sourceName));
+
+  let moveSlugs = [];
+  const rolesOnSource = (config.roles || []).filter(r => (r.workstream || 'main') === sourceId);
+  if (!acceptAll && rolesOnSource.length > 0) {
+    console.log(`\n  Roles currently on "${sourceId}": ${rolesOnSource.map(r => r.slug).join(', ')}`);
+    const answer = await ask(`  Move any to "${split.name}"? Comma-separated slugs, or blank`, '');
+    if (answer) {
+      const requested = answer.split(',').map(s => s.trim()).filter(Boolean);
+      moveSlugs = requested.filter(s => rolesOnSource.some(r => r.slug === s));
+      const unknown = requested.filter(s => !rolesOnSource.some(r => r.slug === s));
+      if (unknown.length > 0) console.log(`  Note: unknown or non-source slugs ignored: ${unknown.join(', ')}`);
+    }
+  }
+
+  const updatedConfig = {
+    ...config,
+    workstreams: [...(config.workstreams || []), { id: newId, name: split.name, createdAt: new Date().toISOString() }],
+    roles: (config.roles || []).map(r => moveSlugs.includes(r.slug) ? { ...r, workstream: newId } : r),
+  };
+  writeConfig(updatedConfig);
+
+  for (const slug of moveSlugs) {
+    const role = updatedConfig.roles.find(r => r.slug === slug);
+    const md = await generateRoleFile(newWs, role, updatedConfig.project, updatedConfig);
+    writeRoleFile(slug, md);
+    console.log(`  ✓ Moved role "${slug}" to "${split.name}" and regenerated its context.`);
+  }
+
+  const stillOnSource = (updatedConfig.roles || []).filter(r => (r.workstream || 'main') === sourceId);
+  for (const role of stillOnSource) {
+    const md = await generateRoleFile(updatedSource, role, updatedConfig.project, updatedConfig);
+    writeRoleFile(role.slug, md);
+  }
+
+  await commitContext(`workstream: split "${split.name}" from ${sourceId}`);
+  if (updatedConfig.autoPush) {
+    try { await pushContext(); } catch { /* non-fatal */ }
+  }
+  console.log(`  ✓ Created workstream "${split.name}" (${newId}) with ${movingWhys.length} Why node${movingWhys.length === 1 ? '' : 's'}.`);
 }
 
 export async function workstreamUseCommand(id) {

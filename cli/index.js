@@ -19,7 +19,7 @@ import {
 } from './commands/snapshot.js';
 import { setupCommand } from './commands/setup.js';
 import { mcpCommand } from './commands/mcp.js';
-import { workstreamSuggestCommand, workstreamListCommand, workstreamUseCommand } from './commands/workstream.js';
+import { workstreamSuggestCommand, workstreamListCommand, workstreamUseCommand, workstreamSplitCommand } from './commands/workstream.js';
 import { getTeamctxDir } from '../src/storage.js';
 import { migrateIfNeeded } from '../src/migrate.js';
 
@@ -79,6 +79,9 @@ snapshot.command('current').description('Show the current-approved snapshot').ac
 
 const workstream = program.command('workstream').description('Manage workstreams (Why/What/How trees)');
 workstream.command('suggest').description('AI proposes how to split the active workstream').action(workstreamSuggestCommand);
+workstream.command('split').description('Interactively accept AI-proposed splits — creates new workstreams')
+  .option('--accept-all', 'Accept every proposed split with AI-suggested names (non-interactive)')
+  .action(workstreamSplitCommand);
 workstream.command('list').description('List all workstreams and their assigned roles').action(workstreamListCommand);
 workstream.command('use <id>').description('Set the active workstream for contribute/ask/reflect').action(workstreamUseCommand);
 
