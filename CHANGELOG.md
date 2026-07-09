@@ -37,6 +37,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   projects and shows that provider's model list.
 - Per-provider curated model registry and lax model validation, so newly
   released models work without a package update.
+- `teamctx workstream suggest | split | list | use` — AI clusters a project's
+  Why/What/How tree into distinct sub-workstreams (e.g. product vs. tech);
+  the manager accepts splits interactively and reassigns roles.
+- `teamctx role assign <slug> --workstream <id>` and `--workstream <id>` on
+  `contribute`, `ask`, `reflect`, and `role add`.
+- Automatic one-time migration of `.teamctx/shared.json` →
+  `.teamctx/workstreams/main.json` (and `context/shared.md` →
+  `context/workstreams/main.md`) on first run against an existing project.
 
 ### Changed
 - `teamctx contribute` no longer applies to shared context on submission by
