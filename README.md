@@ -77,8 +77,41 @@ teamctx contribute "We decided to use AWS (Why). API migration starts next sprin
 | `teamctx config model <id>` | Pick a model from the selected provider's list |
 | `teamctx status` | Project summary |
 | `teamctx mcp` | Start an MCP server over stdio so AI clients can call teamctx tools |
+| `teamctx workstream suggest` | AI proposes how to split the active workstream |
+| `teamctx workstream split` | Interactively accept AI-proposed splits |
+| `teamctx workstream list` | List all workstreams and their assigned roles |
+| `teamctx workstream use <id>` | Set the active workstream |
+| `teamctx role assign <slug> --workstream <id>` | Move a role to a workstream |
 
 See [docs/providers.md](docs/providers.md) for the full provider guide.
+See [docs/workstreams.md](docs/workstreams.md) for the full sub-workstreams guide.
+
+---
+
+## Multiple workstreams
+
+A single `.teamctx/` project can hold several workstreams — separate Why /
+What / How trees for distinct threads of work (product vs. tech, GTM vs.
+platform). Each role is bound to one workstream, so a role's context file
+stays sharp instead of mixing threads.
+
+New projects start with a single workstream, `main`. When the tree grows to
+mix threads, ask the AI to propose a split:
+
+```bash
+teamctx workstream suggest              # dry-run: prints candidate splits
+teamctx workstream split                # interactive: accept, name, move roles
+teamctx workstream list                 # see workstreams and role assignments
+```
+
+Every write command targets the active workstream by default; override with
+`--workstream <id>`:
+
+```bash
+teamctx workstream use product          # set the active workstream
+teamctx contribute "..." --workstream tech
+teamctx ask "why the migration?" --workstream tech
+```
 
 ---
 
