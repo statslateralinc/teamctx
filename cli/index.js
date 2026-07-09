@@ -19,6 +19,7 @@ import {
 } from './commands/snapshot.js';
 import { setupCommand } from './commands/setup.js';
 import { mcpCommand } from './commands/mcp.js';
+import { workstreamSuggestCommand, workstreamListCommand, workstreamUseCommand } from './commands/workstream.js';
 import { getTeamctxDir } from '../src/storage.js';
 import { migrateIfNeeded } from '../src/migrate.js';
 
@@ -75,6 +76,11 @@ snapshot.command('reject <id>').description('Reject a pending snapshot')
   .option('--reason <text>', 'Reason for rejection (recorded in the snapshot)')
   .action(snapshotRejectCommand);
 snapshot.command('current').description('Show the current-approved snapshot').action(snapshotCurrentCommand);
+
+const workstream = program.command('workstream').description('Manage workstreams (Why/What/How trees)');
+workstream.command('suggest').description('AI proposes how to split the active workstream').action(workstreamSuggestCommand);
+workstream.command('list').description('List all workstreams and their assigned roles').action(workstreamListCommand);
+workstream.command('use <id>').description('Set the active workstream for contribute/ask/reflect').action(workstreamUseCommand);
 
 const config = program.command('config').description('View or change project settings');
 config.command('provider [value]').description('Get or set the AI provider (anthropic|openai|gemini)').action(configProviderCommand);
