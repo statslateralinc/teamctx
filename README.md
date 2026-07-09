@@ -86,10 +86,6 @@ teamctx contribute "We decided to use AWS (Why). API migration starts next sprin
 See [docs/providers.md](docs/providers.md) for the full provider guide.
 See [docs/workstreams.md](docs/workstreams.md) for the full sub-workstreams guide.
 
-> A single project can hold multiple workstreams — separate context trees for
-> distinct threads (product vs. tech, GTM vs. platform). See
-> [docs/workstreams.md](docs/workstreams.md).
-
 ---
 
 ## Use teamctx from your AI tool (MCP)
