@@ -1,4 +1,4 @@
-import { proposeDiff, callClaude } from './ai.js';
+import { proposeDiff, callClaude, extractJson } from './ai.js';
 import { applyOps } from './ops.js';
 
 function decisionMarker(node, contributionsById) {
@@ -116,6 +116,75 @@ export async function generateReflection(workstream, contributions, config) {
   ].join('\n');
 
   return callClaude({ prompt, model: config.model, system, max_tokens: 8192, config });
+}
+
+export async function proposeSubworkstreams(workstream, config, roles = []) {
+  const whys = workstream.whys || [];
+  if (whys.length < 2) {
+    return { splits: [], leftover: whys.map(w => w.id), rationale: 'Not enough Why nodes to cluster.' };
+  }
+
+  const tree = whys.map(w => {
+    const whats = (w.whats || []).map(t => `    - What: ${t.text}`).join('\n');
+    return `- id=${w.id} — Why: ${w.text}${whats ? '\n' + whats : ''}`;
+  }).join('\n');
+
+  const roleHints = roles.length
+    ? roles.map(r => `- ${r.name}: ${r.responsibilities}`).join('\n')
+    : '(no roles defined)';
+
+  const system =
+    'You cluster distinct threads in a shared team Why/What/How context tree. ' +
+    'Two threads are "distinct" when the roles that care about them barely overlap ' +
+    '(e.g. product-strategy vs. engineering-implementation). Output STRICT JSON only.';
+
+  const prompt = [
+    `Project: ${config.project || workstream.name || 'project'}`,
+    '',
+    'Current workstream Why nodes (id + text, optional Whats for context):',
+    tree,
+    '',
+    'Roles on this team (their responsibilities are hints for what natural clusters look like):',
+    roleHints,
+    '',
+    'Return STRICT JSON with this exact shape:',
+    `{
+  "splits": [
+    { "name": "Short 2-4 word name", "rationale": "one-sentence why these belong together", "whyIds": ["<id>", "<id>"] }
+  ],
+  "leftover": ["<why id that fits neither cluster>"]
+}`,
+    '',
+    'Rules:',
+    '- Propose 0-4 splits. 0 is valid — output empty splits if no clean split exists.',
+    '- whyIds MUST be disjoint across splits AND leftover; every Why id appears at most once.',
+    '- Only use ids that exist in the tree above.',
+    '- A single cluster with all whys is NOT a useful split — omit it.',
+    '- Names are 2-4 words, capitalized (e.g. "Product Strategy", "Tech Migration").',
+    'JSON only, no markdown fences.',
+  ].join('\n');
+
+  const raw = await callClaude({ prompt, model: config.model, system });
+  const parsed = extractJson(raw);
+  return normalizeSubworkstreamProposal(parsed, whys);
+}
+
+export function normalizeSubworkstreamProposal(parsed, whys) {
+  const knownIds = new Set(whys.map(w => w.id));
+  const seen = new Set();
+  const splits = [];
+  for (const raw of Array.isArray(parsed.splits) ? parsed.splits : []) {
+    const name = String(raw.name || '').trim();
+    const rationale = String(raw.rationale || '').trim();
+    const whyIds = (Array.isArray(raw.whyIds) ? raw.whyIds : [])
+      .filter(id => knownIds.has(id) && !seen.has(id));
+    whyIds.forEach(id => seen.add(id));
+    if (name && whyIds.length > 0) splits.push({ name, rationale, whyIds });
+  }
+
+  const claimed = new Set(splits.flatMap(s => s.whyIds));
+  const leftover = whys.map(w => w.id).filter(id => !claimed.has(id));
+  return { splits, leftover };
 }
 
 export async function answerQuestion({ sharedMd, roleMd, question, config }) {

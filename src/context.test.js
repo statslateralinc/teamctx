@@ -1,9 +1,10 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { serializeToMd, updateShared, generateRoleFile, answerQuestion } from './context.js';
+import { serializeToMd, updateShared, generateRoleFile, answerQuestion, proposeSubworkstreams, normalizeSubworkstreamProposal } from './context.js';
 
 vi.mock('./ai.js', () => ({
   proposeDiff: vi.fn(),
   callClaude: vi.fn(),
+  extractJson: (raw) => JSON.parse(raw),
 }));
 vi.mock('./ops.js', () => ({
   applyOps: vi.fn((ws) => ({ ...ws, _applied: true })),
@@ -117,6 +118,80 @@ describe('generateRoleFile', () => {
     const result = await generateRoleFile(baseWs, role, 'Q3 Launch', { model: 'claude-sonnet-4-6' });
     expect(callClaude).toHaveBeenCalledOnce();
     expect(result).toContain('# CPO Context');
+  });
+});
+
+describe('proposeSubworkstreams', () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  const wsWithFive = {
+    id: 'main', name: 'Demo',
+    whys: [
+      { id: 'w1', text: 'Ship product Q3', whats: [] },
+      { id: 'w2', text: 'Reach 100 customers', whats: [] },
+      { id: 'w3', text: 'Migrate to microservices', whats: [] },
+      { id: 'w4', text: 'Cut infra cost', whats: [] },
+      { id: 'w5', text: 'Standalone', whats: [] },
+    ],
+  };
+
+  it('returns empty splits when fewer than 2 whys exist without calling the model', async () => {
+    const ws = { id: 'main', name: 'X', whys: [{ id: 'w1', text: 'only', whats: [] }] };
+    const result = await proposeSubworkstreams(ws, { model: 'claude-sonnet-4-6', project: 'X' });
+    expect(callClaude).not.toHaveBeenCalled();
+    expect(result.splits).toEqual([]);
+    expect(result.leftover).toEqual(['w1']);
+  });
+
+  it('parses splits from the model and enforces disjoint whyIds', async () => {
+    callClaude.mockResolvedValue(JSON.stringify({
+      splits: [
+        { name: 'Product', rationale: 'commercial goals', whyIds: ['w1', 'w2'] },
+        { name: 'Tech', rationale: 'engineering', whyIds: ['w3', 'w4'] },
+      ],
+      leftover: ['w5'],
+    }));
+
+    const result = await proposeSubworkstreams(wsWithFive, { model: 'claude-sonnet-4-6', project: 'Demo' });
+    expect(result.splits).toHaveLength(2);
+    expect(result.splits[0]).toMatchObject({ name: 'Product', whyIds: ['w1', 'w2'] });
+    expect(result.splits[1]).toMatchObject({ name: 'Tech', whyIds: ['w3', 'w4'] });
+    expect(result.leftover).toEqual(['w5']);
+  });
+
+  it('drops duplicate whyIds across splits (keeps only the first occurrence)', () => {
+    const parsed = {
+      splits: [
+        { name: 'A', rationale: '', whyIds: ['w1', 'w2'] },
+        { name: 'B', rationale: '', whyIds: ['w2', 'w3'] },
+      ],
+      leftover: [],
+    };
+    const normalized = normalizeSubworkstreamProposal(parsed, wsWithFive.whys);
+    expect(normalized.splits[0].whyIds).toEqual(['w1', 'w2']);
+    expect(normalized.splits[1].whyIds).toEqual(['w3']);
+  });
+
+  it('drops splits that become empty after filtering unknown ids', () => {
+    const parsed = {
+      splits: [
+        { name: 'Ghost', rationale: '', whyIds: ['unknown-1', 'unknown-2'] },
+        { name: 'Real', rationale: '', whyIds: ['w1'] },
+      ],
+      leftover: [],
+    };
+    const normalized = normalizeSubworkstreamProposal(parsed, wsWithFive.whys);
+    expect(normalized.splits).toHaveLength(1);
+    expect(normalized.splits[0].name).toBe('Real');
+  });
+
+  it('recomputes leftover from whys not claimed by any split', () => {
+    const parsed = {
+      splits: [{ name: 'Product', rationale: '', whyIds: ['w1', 'w2'] }],
+      leftover: [],
+    };
+    const normalized = normalizeSubworkstreamProposal(parsed, wsWithFive.whys);
+    expect(normalized.leftover).toEqual(['w3', 'w4', 'w5']);
   });
 });
 
