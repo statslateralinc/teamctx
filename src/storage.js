@@ -165,3 +165,46 @@ export function writeCurrentSnapshotPointer(pointer, dir) {
   mkdirSync(d, { recursive: true });
   writeFileSync(join(d, 'current.json'), JSON.stringify(pointer, null, 2));
 }
+
+function sanitizeWorkstreamId(id) {
+  if (!/^[a-zA-Z0-9_-]+$/.test(id)) {
+    throw new Error(`Invalid workstream id: "${id}"`);
+  }
+}
+
+export function readWorkstream(id, dir) {
+  sanitizeWorkstreamId(id);
+  const p = resolve(dir, 'workstreams', `${id}.json`);
+  if (!existsSync(p)) return { id, name: '', whys: [] };
+  return JSON.parse(readFileSync(p, 'utf-8'));
+}
+
+export function writeWorkstream(id, workstream, dir) {
+  sanitizeWorkstreamId(id);
+  const wsDir = resolve(dir, 'workstreams');
+  mkdirSync(wsDir, { recursive: true });
+  writeFileSync(join(wsDir, `${id}.json`), JSON.stringify(workstream, null, 2));
+}
+
+export function listWorkstreamIds(dir) {
+  const wsDir = resolve(dir, 'workstreams');
+  if (!existsSync(wsDir)) return [];
+  return readdirSync(wsDir)
+    .filter(f => f.endsWith('.json'))
+    .map(f => f.slice(0, -'.json'.length))
+    .sort();
+}
+
+export function readWorkstreamMd(id, dir) {
+  sanitizeWorkstreamId(id);
+  const p = resolve(dir, 'context', 'workstreams', `${id}.md`);
+  if (!existsSync(p)) return '';
+  return readFileSync(p, 'utf-8');
+}
+
+export function writeWorkstreamMd(id, content, dir) {
+  sanitizeWorkstreamId(id);
+  const mdDir = resolve(dir, 'context', 'workstreams');
+  mkdirSync(mdDir, { recursive: true });
+  writeFileSync(join(mdDir, `${id}.md`), content);
+}
