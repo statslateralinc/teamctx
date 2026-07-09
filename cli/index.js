@@ -19,8 +19,18 @@ import {
 } from './commands/snapshot.js';
 import { setupCommand } from './commands/setup.js';
 import { mcpCommand } from './commands/mcp.js';
+import { getTeamctxDir } from '../src/storage.js';
+import { migrateIfNeeded } from '../src/migrate.js';
 
 program.name('teamctx').description('AI-native version control for team context').version('0.1.0');
+
+program.hook('preAction', (thisCommand, actionCommand) => {
+  const name = actionCommand.name();
+  if (name === 'init' || name === 'setup') return;
+  try {
+    migrateIfNeeded(getTeamctxDir());
+  } catch { /* not in a teamctx project — command will surface the error */ }
+});
 
 program.command('setup').description('Create a private GitHub repo and initialize teamctx').action(setupCommand);
 program.command('init').description('Set up teamctx in an existing git repo').action(initCommand);

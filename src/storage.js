@@ -26,12 +26,16 @@ export function writeConfig(config, dir) {
 }
 
 export function readShared(dir) {
+  const mainWs = resolve(dir, 'workstreams', 'main.json');
+  if (existsSync(mainWs)) return readWorkstream('main', dir);
   const p = resolve(dir, 'shared.json');
   if (!existsSync(p)) return { id: 'main', name: '', whys: [] };
   return JSON.parse(readFileSync(p, 'utf-8'));
 }
 
 export function writeShared(workstream, dir) {
+  const mainWs = resolve(dir, 'workstreams', 'main.json');
+  if (existsSync(mainWs)) return writeWorkstream('main', workstream, dir);
   writeFileSync(resolve(dir, 'shared.json'), JSON.stringify(workstream, null, 2));
 }
 
@@ -70,12 +74,16 @@ export function readRoleFile(slug, dir) {
 }
 
 export function readSharedMd(dir) {
+  const mainMd = resolve(dir, 'context', 'workstreams', 'main.md');
+  if (existsSync(mainMd)) return readWorkstreamMd('main', dir);
   const p = resolve(dir, 'context', 'shared.md');
   if (!existsSync(p)) return '';
   return readFileSync(p, 'utf-8');
 }
 
 export function writeSharedMd(content, dir) {
+  const mainMd = resolve(dir, 'context', 'workstreams', 'main.md');
+  if (existsSync(mainMd)) return writeWorkstreamMd('main', content, dir);
   const contextDir = resolve(dir, 'context');
   mkdirSync(contextDir, { recursive: true });
   writeFileSync(join(contextDir, 'shared.md'), content);
