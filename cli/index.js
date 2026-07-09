@@ -4,7 +4,7 @@ dotenv.config({ path: '.env.local' });
 dotenv.config();
 import { program } from 'commander';
 import { initCommand } from './commands/init.js';
-import { roleCommand } from './commands/role.js';
+import { roleCommand, roleAssignCommand } from './commands/role.js';
 import { contributeCommand } from './commands/contribute.js';
 import { askCommand } from './commands/ask.js';
 import { pullCommand } from './commands/pull.js';
@@ -37,21 +37,31 @@ program.command('setup').description('Create a private GitHub repo and initializ
 program.command('init').description('Set up teamctx in an existing git repo').action(initCommand);
 
 const role = program.command('role').description('Manage team roles');
-role.command('add').description('Add a new role (AI-assisted)').option('--suggest', 'AI suggests roles from context').action(opts => roleCommand('add', opts));
+role.command('add').description('Add a new role (AI-assisted)')
+  .option('--suggest', 'AI suggests roles from context')
+  .option('--workstream <id>', 'Bind this role to a workstream (default: active)')
+  .action(opts => roleCommand('add', opts));
 role.command('list').description('List all roles').action(() => roleCommand('list', {}));
+role.command('assign <slug>').description("Move a role to a workstream and regenerate its context")
+  .requiredOption('--workstream <id>', 'Target workstream id')
+  .action(roleAssignCommand);
 
 program.command('contribute <text>').description('Add context — AI proposes changes and enqueues for manager approval')
   .option('--decision', 'Tag as a human decision (never pruned by reflect)')
   .option('--auto-approve', 'Skip the y/n confirmation on the proposed diff')
   .option('--apply', 'Apply immediately instead of enqueueing for approval (solo mode)')
+  .option('--workstream <id>', 'Target workstream (default: active)')
   .action(contributeCommand);
 
 program.command('ask <question>').description("Ask a question, answered from your team's context")
   .option('--role <slug>', "Answer from a specific role's perspective")
+  .option('--workstream <id>', 'Answer from a specific workstream (default: role\'s workstream, else active)')
   .action(askCommand);
 
 program.command('pull').description('Fetch and process pending web contributions').action(pullCommand);
-program.command('reflect').description('AI rewrites shared context for clarity').action(reflectCommand);
+program.command('reflect').description('AI rewrites shared context for clarity')
+  .option('--workstream <id>', 'Target workstream (default: active)')
+  .action(reflectCommand);
 program.command('context <role>').description('Print role context MD to stdout').action(contextCommand);
 program.command('status').description('Show project summary').action(statusCommand);
 program.command('mcp').description('Start MCP server over stdio (for Claude Code, Claude Desktop, Cursor, etc.)')

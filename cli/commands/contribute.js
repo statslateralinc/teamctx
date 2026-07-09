@@ -1,5 +1,5 @@
 import { ask } from '../prompt.js';
-import { readConfig, readShared, writeShared, writeSharedMd, appendContribution, writeRoleFile, writeQueueItem, readContributions } from '../../src/storage.js';
+import { readConfig, readWorkstream, writeWorkstream, writeWorkstreamMd, appendContribution, writeRoleFile, writeQueueItem, readContributions } from '../../src/storage.js';
 import { updateShared, generateRoleFile, serializeToMd } from '../../src/context.js';
 import { commitContext, pushContext } from '../../src/git.js';
 
@@ -15,14 +15,25 @@ function newContribution(text, author, tagged, source) {
   };
 }
 
+function workstreamDisplayName(id, workstream, config) {
+  return config.workstreams?.find(w => w.id === id)?.name || workstream.name || config.project;
+}
+
 export async function contributeCommand(text, opts) {
   const config = readConfig();
-  const workstream = readShared();
+  const targetId = opts.workstream || config.activeWorkstream || 'main';
+  const known = new Set((config.workstreams || []).map(w => w.id));
+  if (config.workstreams && !known.has(targetId)) {
+    console.error(`Error: no workstream "${targetId}". Run \`teamctx workstream list\`.`);
+    process.exit(1);
+  }
+  const workstream = readWorkstream(targetId);
   const tagged = opts.decision ? 'decision' : null;
   const contribution = newContribution(text, config.me, tagged, opts.source);
 
   appendContribution(contribution);
-  console.log(`\n→ Processing contribution from ${config.me}...`);
+  const wsLabel = targetId === 'main' ? '' : ` [workstream: ${targetId}]`;
+  console.log(`\n→ Processing contribution from ${config.me}${wsLabel}...`);
 
   const { workstream: updated, summary, operations } = await updateShared(workstream, contribution, config);
 
@@ -77,13 +88,14 @@ export async function contributeCommand(text, opts) {
     return;
   }
 
-  writeShared(updated);
+  writeWorkstream(targetId, updated);
   const contributions = readContributions();
-  writeSharedMd(serializeToMd(updated, config.project, config.me, contributions));
+  writeWorkstreamMd(targetId, serializeToMd(updated, workstreamDisplayName(targetId, updated, config), config.me, contributions));
 
-  if (config.roles.length > 0) {
-    console.log(`\n→ Regenerating ${config.roles.length} role file${config.roles.length !== 1 ? 's' : ''}...`);
-    for (const role of config.roles) {
+  const rolesOnTarget = (config.roles || []).filter(r => (r.workstream || 'main') === targetId);
+  if (rolesOnTarget.length > 0) {
+    console.log(`\n→ Regenerating ${rolesOnTarget.length} role file${rolesOnTarget.length !== 1 ? 's' : ''}...`);
+    for (const role of rolesOnTarget) {
       const md = await generateRoleFile(updated, role, config.project, config, contributions);
       writeRoleFile(role.slug, md);
       process.stdout.write(`  ✓ ${role.slug}.md\n`);
@@ -91,7 +103,8 @@ export async function contributeCommand(text, opts) {
   }
 
   const note = tagged === 'decision' ? ' [decision]' : '';
-  await commitContext(`context: ${config.me} contribution${note}`);
+  const wsNote = targetId === 'main' ? '' : ` (${targetId})`;
+  await commitContext(`context: ${config.me} contribution${note}${wsNote}`);
 
   if (config.autoPush) {
     try { await pushContext(); console.log('\n✓ Committed and pushed.'); }
