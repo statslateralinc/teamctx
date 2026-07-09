@@ -86,32 +86,9 @@ teamctx contribute "We decided to use AWS (Why). API migration starts next sprin
 See [docs/providers.md](docs/providers.md) for the full provider guide.
 See [docs/workstreams.md](docs/workstreams.md) for the full sub-workstreams guide.
 
----
-
-## Multiple workstreams
-
-A single `.teamctx/` project can hold several workstreams — separate Why /
-What / How trees for distinct threads of work (product vs. tech, GTM vs.
-platform). Each role is bound to one workstream, so a role's context file
-stays sharp instead of mixing threads.
-
-New projects start with a single workstream, `main`. When the tree grows to
-mix threads, ask the AI to propose a split:
-
-```bash
-teamctx workstream suggest              # dry-run: prints candidate splits
-teamctx workstream split                # interactive: accept, name, move roles
-teamctx workstream list                 # see workstreams and role assignments
-```
-
-Every write command targets the active workstream by default; override with
-`--workstream <id>`:
-
-```bash
-teamctx workstream use product          # set the active workstream
-teamctx contribute "..." --workstream tech
-teamctx ask "why the migration?" --workstream tech
-```
+> A single project can hold multiple workstreams — separate context trees for
+> distinct threads (product vs. tech, GTM vs. platform). See
+> [docs/workstreams.md](docs/workstreams.md).
 
 ---
 
