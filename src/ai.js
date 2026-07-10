@@ -1,13 +1,28 @@
 import { jsonrepair } from 'jsonrepair';
 import { getProvider } from './providers/index.js';
 
-export const MODELS = [
-  { id: 'claude-opus-4-7', label: 'Opus 4.7 — sharpest' },
-  { id: 'claude-sonnet-4-6', label: 'Sonnet 4.6 — balanced' },
-  { id: 'claude-haiku-4-5', label: 'Haiku 4.5 — fast' },
-];
+export const MODELS_BY_PROVIDER = {
+  anthropic: [
+    { id: 'claude-opus-4-7', label: 'Opus 4.7 — sharpest' },
+    { id: 'claude-sonnet-4-6', label: 'Sonnet 4.6 — balanced' },
+    { id: 'claude-haiku-4-5', label: 'Haiku 4.5 — fast' },
+  ],
+};
 
-export const DEFAULT_MODEL = 'claude-sonnet-4-6';
+export const DEFAULT_MODEL_BY_PROVIDER = {
+  anthropic: 'claude-sonnet-4-6',
+};
+
+export function getModelsFor(providerId) {
+  return MODELS_BY_PROVIDER[providerId] || [];
+}
+
+export function getDefaultModelFor(providerId) {
+  return DEFAULT_MODEL_BY_PROVIDER[providerId];
+}
+
+export const MODELS = MODELS_BY_PROVIDER.anthropic;
+export const DEFAULT_MODEL = DEFAULT_MODEL_BY_PROVIDER.anthropic;
 
 export async function callClaude({ prompt, model = DEFAULT_MODEL, system = '', max_tokens = 4096, config }) {
   const provider = getProvider(config);

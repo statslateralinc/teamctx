@@ -1,5 +1,5 @@
 import { readConfig, writeConfig } from '../../src/storage.js';
-import { MODELS } from '../../src/ai.js';
+import { getModelsFor } from '../../src/ai.js';
 
 const ALIASES = {
   opus: 'claude-opus-4-7',
@@ -9,30 +9,32 @@ const ALIASES = {
 
 export async function configModelCommand(value) {
   const config = readConfig();
+  const providerId = config.provider || 'anthropic';
+  const models = getModelsFor(providerId);
 
   if (!value) {
-    const current = MODELS.find(m => m.id === config.model);
-    console.log(`\nCurrent model: ${config.model}${current ? ` (${current.label})` : ''}`);
-    console.log('\nAvailable models:');
-    MODELS.forEach(m => {
+    const current = models.find(m => m.id === config.model);
+    console.log(`\nProvider: ${providerId}`);
+    console.log(`Current model: ${config.model}${current ? ` (${current.label})` : ''}`);
+    console.log(`\nAvailable models for ${providerId}:`);
+    models.forEach(m => {
       const marker = m.id === config.model ? ' ←' : '';
       console.log(`  ${m.id.padEnd(24)} ${m.label}${marker}`);
     });
-    console.log('\nUsage: teamctx config model <opus|sonnet|haiku|full-model-id>');
+    console.log('\nUsage: teamctx config model <model-id>');
     return;
   }
 
   const resolved = ALIASES[value.toLowerCase()] || value;
-  if (!MODELS.find(m => m.id === resolved)) {
-    console.error(`Error: unknown model "${value}".`);
-    console.error(`Valid options: ${MODELS.map(m => m.id).join(', ')}`);
-    console.error(`Or use short names: opus, sonnet, haiku`);
-    process.exit(1);
+  if (models.length && !models.find(m => m.id === resolved)) {
+    console.warn(`Warning: "${resolved}" is not in the known model list for ${providerId}.`);
+    console.warn(`Known: ${models.map(m => m.id).join(', ')}`);
+    console.warn('Setting it anyway — remove or change with `teamctx config model` if it doesn\'t work.');
   }
 
   writeConfig({ ...config, model: resolved });
-  const label = MODELS.find(m => m.id === resolved).label;
-  console.log(`✓ Model set to ${resolved} (${label})`);
+  const known = models.find(m => m.id === resolved);
+  console.log(`✓ Model set to ${resolved}${known ? ` (${known.label})` : ''}`);
 }
 
 export async function configGithubRawBaseCommand(value) {
