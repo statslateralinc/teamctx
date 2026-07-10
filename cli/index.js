@@ -74,4 +74,20 @@ config.command('manager [value]').description('Get or set the manager identity (
 config.command('manager-email [value]').description('Get or set the manager email for contribution notifications').action(configManagerEmailCommand);
 config.command('deploy-url [value]').description('Get or set the Vercel deploy URL').action(configDeployUrlCommand);
 
-program.parseAsync();
+function formatError(err) {
+  const raw = err?.message || String(err);
+  const jsonStart = raw.indexOf('{');
+  if (jsonStart >= 0) {
+    try {
+      const parsed = JSON.parse(raw.slice(jsonStart));
+      const msg = parsed?.error?.message || parsed?.message;
+      if (msg) return msg;
+    } catch { /* fall through */ }
+  }
+  return raw.split('\n')[0];
+}
+
+program.parseAsync().catch(err => {
+  console.error(`\nError: ${formatError(err)}\n`);
+  process.exit(1);
+});
