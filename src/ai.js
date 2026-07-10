@@ -44,7 +44,7 @@ function stripWorkstreamForPrompt(workstream) {
   };
 }
 
-export async function proposeDiff({ workstream, contribution, source, model }) {
+export async function proposeDiff({ workstream, contribution, source, model, config }) {
   const system =
     'You distill a single team contribution into typed edits to a hierarchical ' +
     'Why / What / How record. Output STRICT JSON only — no markdown fences, no commentary.';
@@ -77,7 +77,7 @@ export async function proposeDiff({ workstream, contribution, source, model }) {
     'parentWhyId and parentWhatId MUST exist in the current record. JSON only.',
   ].join('\n');
 
-  const raw = await callClaude({ prompt, model, system });
+  const raw = await callClaude({ prompt, model, system, config });
   const parsed = extractJson(raw);
   return {
     summary: String(parsed.summary ?? '(no summary)'),
