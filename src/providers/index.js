@@ -1,6 +1,7 @@
 import * as anthropic from './anthropic.js';
+import * as openai from './openai.js';
 
-const PROVIDERS = { anthropic };
+const PROVIDERS = { anthropic, openai };
 
 export function getProvider(config = {}) {
   const id = config.provider || 'anthropic';

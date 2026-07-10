@@ -7,10 +7,16 @@ export const MODELS_BY_PROVIDER = {
     { id: 'claude-sonnet-4-6', label: 'Sonnet 4.6 — balanced' },
     { id: 'claude-haiku-4-5', label: 'Haiku 4.5 — fast' },
   ],
+  openai: [
+    { id: 'gpt-4.1', label: 'GPT-4.1 — sharpest' },
+    { id: 'gpt-4.1-mini', label: 'GPT-4.1 mini — balanced' },
+    { id: 'gpt-4o-mini', label: 'GPT-4o mini — fast' },
+  ],
 };
 
 export const DEFAULT_MODEL_BY_PROVIDER = {
   anthropic: 'claude-sonnet-4-6',
+  openai: 'gpt-4.1-mini',
 };
 
 export function getModelsFor(providerId) {
