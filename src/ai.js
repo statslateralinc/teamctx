@@ -1,5 +1,5 @@
-import Anthropic from '@anthropic-ai/sdk';
 import { jsonrepair } from 'jsonrepair';
+import { getProvider } from './providers/index.js';
 
 export const MODELS = [
   { id: 'claude-opus-4-7', label: 'Opus 4.7 — sharpest' },
@@ -9,19 +9,9 @@ export const MODELS = [
 
 export const DEFAULT_MODEL = 'claude-sonnet-4-6';
 
-export async function callClaude({ prompt, model = DEFAULT_MODEL, system = '', max_tokens = 4096 }) {
-  const apiKey = process.env.ANTHROPIC_API_KEY;
-  if (!apiKey) {
-    throw new Error('ANTHROPIC_API_KEY not set. Add it to your .env file or shell environment.');
-  }
-  const client = new Anthropic({ apiKey });
-  const msg = await client.messages.create({
-    model,
-    max_tokens,
-    ...(system ? { system } : {}),
-    messages: [{ role: 'user', content: prompt }],
-  });
-  return msg.content.filter(b => b.type === 'text').map(b => b.text).join('\n').trim();
+export async function callClaude({ prompt, model = DEFAULT_MODEL, system = '', max_tokens = 4096, config }) {
+  const provider = getProvider(config);
+  return provider.complete({ prompt, model, system, max_tokens });
 }
 
 export function extractJson(text) {
