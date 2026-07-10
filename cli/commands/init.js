@@ -2,7 +2,7 @@ import { existsSync, mkdirSync, writeFileSync, readFileSync } from 'fs';
 import { join } from 'path';
 import { ask, askChoice } from '../prompt.js';
 import { checkGitRepo, commitContext, pushContext } from '../../src/git.js';
-import { MODELS, DEFAULT_MODEL } from '../../src/ai.js';
+import { getModelsFor, getDefaultModelFor } from '../../src/ai.js';
 import { writeConfig, writeShared, writeSharedMd } from '../../src/storage.js';
 import { serializeToMd } from '../../src/context.js';
 
@@ -35,8 +35,11 @@ export async function initCommand() {
   const me = await ask('Your name or handle (used on contributions)');
   if (!me) { console.error('Name is required.'); process.exit(1); }
 
-  const modelIdx = await askChoice('AI model', MODELS.map(m => m.label), MODELS.findIndex(m => m.id === DEFAULT_MODEL));
-  const model = MODELS[modelIdx].id;
+  const providerId = 'anthropic';
+  const models = getModelsFor(providerId);
+  const defaultModel = getDefaultModelFor(providerId);
+  const modelIdx = await askChoice('AI model', models.map(m => m.label), models.findIndex(m => m.id === defaultModel));
+  const model = models[modelIdx].id;
 
   const autoPushAnswer = await ask('Auto-push to git after each update? (y/n)', 'y');
   const autoPush = autoPushAnswer.toLowerCase() === 'y';
