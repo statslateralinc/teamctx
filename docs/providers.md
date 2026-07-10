@@ -60,6 +60,23 @@ id that isn't in the list, teamctx warns but still writes it. That way a
 new model release from any of the three providers works with teamctx
 without waiting for a package update.
 
+**Model id stability differs by provider:**
+
+- **Anthropic** — pin to a specific version (e.g. `claude-sonnet-4-6`,
+  `claude-haiku-4-5`). Anthropic does not publish stable `-latest`
+  aliases; pinned ids are the recommended path.
+- **OpenAI** — the short names (`gpt-4.1`, `gpt-4.1-mini`, `gpt-4o-mini`)
+  are OpenAI-maintained aliases that stay pointed at the current
+  snapshot. They're stable enough for teamctx's use.
+- **Gemini** — Google recommends the `-latest` aliases
+  (`gemini-flash-latest`, `gemini-pro-latest`). Older pinned ids like
+  `gemini-2.5-flash` have been deprecated for new users; teamctx ships
+  the aliases by default so you don't hit that.
+
+If you need reproducibility across a release cycle, pin a dated snapshot
+manually with `teamctx config model <exact-id>` — the warn-only
+validation lets you.
+
 ## What's not (yet) supported
 
 - **Streaming responses.** All providers return the full response at

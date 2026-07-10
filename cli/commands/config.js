@@ -1,5 +1,5 @@
 import { readConfig, writeConfig } from '../../src/storage.js';
-import { getModelsFor } from '../../src/ai.js';
+import { getModelsFor, getDefaultModelFor } from '../../src/ai.js';
 
 const ALIASES = {
   opus: 'claude-opus-4-7',
@@ -30,8 +30,17 @@ export async function configProviderCommand(value) {
     process.exit(1);
   }
 
-  writeConfig({ ...config, provider: v });
+  const currentModel = config.model;
+  const knownForNew = getModelsFor(v);
+  const stillValid = knownForNew.some(m => m.id === currentModel);
+  const nextModel = stillValid ? currentModel : getDefaultModelFor(v);
+
+  writeConfig({ ...config, provider: v, model: nextModel });
   console.log(`✓ Provider set to ${v}`);
+  if (!stillValid) {
+    console.log(`  Model reset to ${nextModel} (was "${currentModel}", not valid for ${v}).`);
+    console.log(`  Change with: teamctx config model <id>`);
+  }
   if (!process.env[PROVIDER_KEYS[v]]) {
     console.log(`Note: ${PROVIDER_KEYS[v]} is not set. Add it to .env.local before running teamctx contribute, ask, or reflect.`);
   }
