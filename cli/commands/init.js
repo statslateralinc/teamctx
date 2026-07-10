@@ -35,11 +35,23 @@ export async function initCommand() {
   const me = await ask('Your name or handle (used on contributions)');
   if (!me) { console.error('Name is required.'); process.exit(1); }
 
-  const providerId = 'anthropic';
+  const PROVIDERS = [
+    { id: 'anthropic', label: 'Anthropic (Claude)',    envVar: 'ANTHROPIC_API_KEY' },
+    { id: 'openai',    label: 'OpenAI (GPT)',          envVar: 'OPENAI_API_KEY' },
+    { id: 'gemini',    label: 'Google Gemini',         envVar: 'GEMINI_API_KEY' },
+  ];
+  const providerIdx = await askChoice('AI provider', PROVIDERS.map(p => p.label), 0);
+  const providerId = PROVIDERS[providerIdx].id;
+  const providerEnvVar = PROVIDERS[providerIdx].envVar;
+
   const models = getModelsFor(providerId);
   const defaultModel = getDefaultModelFor(providerId);
   const modelIdx = await askChoice('AI model', models.map(m => m.label), models.findIndex(m => m.id === defaultModel));
   const model = models[modelIdx].id;
+
+  if (!process.env[providerEnvVar]) {
+    console.log(`\nNote: ${providerEnvVar} is not set. Add it to .env.local before running teamctx contribute, ask, or reflect.`);
+  }
 
   const autoPushAnswer = await ask('Auto-push to git after each update? (y/n)', 'y');
   const autoPush = autoPushAnswer.toLowerCase() === 'y';
@@ -50,7 +62,7 @@ export async function initCommand() {
 
   mkdirSync(join(teamctxDir, 'context', 'roles'), { recursive: true });
 
-  const config = { project, me, model, autoPush, deployUrl: deployUrl || '', githubRawBase: githubRawBase || '', managerEmail: managerEmail || '', roles: [] };
+  const config = { project, me, provider: providerId, model, autoPush, deployUrl: deployUrl || '', githubRawBase: githubRawBase || '', managerEmail: managerEmail || '', roles: [] };
   writeConfig(config, teamctxDir);
 
   const workstream = { id: 'main', name: project, whys: [] };
