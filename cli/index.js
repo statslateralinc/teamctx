@@ -11,7 +11,7 @@ import { pullCommand } from './commands/pull.js';
 import { reflectCommand } from './commands/reflect.js';
 import { contextCommand } from './commands/context.js';
 import { statusCommand } from './commands/status.js';
-import { configModelCommand, configGithubRawBaseCommand, configManagerCommand, configManagerEmailCommand, configDeployUrlCommand } from './commands/config.js';
+import { configModelCommand, configGithubRawBaseCommand, configManagerCommand, configManagerEmailCommand, configDeployUrlCommand, configProviderCommand } from './commands/config.js';
 import { reviewListCommand, reviewApproveCommand, reviewRejectCommand } from './commands/review.js';
 import {
   snapshotCreateCommand, snapshotListCommand, snapshotShowCommand,
@@ -67,6 +67,7 @@ snapshot.command('reject <id>').description('Reject a pending snapshot')
 snapshot.command('current').description('Show the current-approved snapshot').action(snapshotCurrentCommand);
 
 const config = program.command('config').description('View or change project settings');
+config.command('provider [value]').description('Get or set the AI provider (anthropic|openai|gemini)').action(configProviderCommand);
 config.command('model [value]').description('Get or set the AI model').action(configModelCommand);
 config.command('github-raw-base [value]').description('Get or set the GitHub raw base URL').action(configGithubRawBaseCommand);
 config.command('manager [value]').description('Get or set the manager identity (name); only that identity may approve/reject').action(configManagerCommand);

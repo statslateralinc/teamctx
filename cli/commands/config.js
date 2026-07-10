@@ -7,6 +7,36 @@ const ALIASES = {
   haiku: 'claude-haiku-4-5',
 };
 
+const PROVIDER_KEYS = {
+  anthropic: 'ANTHROPIC_API_KEY',
+  openai: 'OPENAI_API_KEY',
+  gemini: 'GEMINI_API_KEY',
+};
+
+export async function configProviderCommand(value) {
+  const config = readConfig();
+  const current = config.provider || 'anthropic';
+
+  if (!value) {
+    console.log(`\nCurrent provider: ${current}`);
+    console.log('\nAvailable providers: anthropic, openai, gemini');
+    console.log('\nUsage: teamctx config provider <anthropic|openai|gemini>');
+    return;
+  }
+
+  const v = value.toLowerCase();
+  if (!PROVIDER_KEYS[v]) {
+    console.error(`Error: unknown provider "${value}". Valid: ${Object.keys(PROVIDER_KEYS).join(', ')}.`);
+    process.exit(1);
+  }
+
+  writeConfig({ ...config, provider: v });
+  console.log(`✓ Provider set to ${v}`);
+  if (!process.env[PROVIDER_KEYS[v]]) {
+    console.log(`Note: ${PROVIDER_KEYS[v]} is not set. Add it to .env.local before running teamctx contribute, ask, or reflect.`);
+  }
+}
+
 export async function configModelCommand(value) {
   const config = readConfig();
   const providerId = config.provider || 'anthropic';
