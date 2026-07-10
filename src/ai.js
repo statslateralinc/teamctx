@@ -12,11 +12,17 @@ export const MODELS_BY_PROVIDER = {
     { id: 'gpt-4.1-mini', label: 'GPT-4.1 mini — balanced' },
     { id: 'gpt-4o-mini', label: 'GPT-4o mini — fast' },
   ],
+  gemini: [
+    { id: 'gemini-2.5-pro', label: 'Gemini 2.5 Pro — sharpest' },
+    { id: 'gemini-2.5-flash', label: 'Gemini 2.5 Flash — balanced' },
+    { id: 'gemini-2.5-flash-lite', label: 'Gemini 2.5 Flash Lite — fast' },
+  ],
 };
 
 export const DEFAULT_MODEL_BY_PROVIDER = {
   anthropic: 'claude-sonnet-4-6',
   openai: 'gpt-4.1-mini',
+  gemini: 'gemini-2.5-flash',
 };
 
 export function getModelsFor(providerId) {

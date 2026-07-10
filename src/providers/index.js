@@ -1,7 +1,8 @@
 import * as anthropic from './anthropic.js';
 import * as openai from './openai.js';
+import * as gemini from './gemini.js';
 
-const PROVIDERS = { anthropic, openai };
+const PROVIDERS = { anthropic, openai, gemini };
 
 export function getProvider(config = {}) {
   const id = config.provider || 'anthropic';
