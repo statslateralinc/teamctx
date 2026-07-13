@@ -59,8 +59,20 @@ export async function contributeCommand(text, opts) {
       summary,
       operations,
     });
-    console.log(`\n✓ Submitted for approval (id: ${contribution.id}).`);
-    console.log(`  Manager: run \`teamctx review approve ${contribution.id}\` or \`teamctx review reject ${contribution.id}\`.`);
+
+    await commitContext(`queue: ${config.me} submission pending approval (${contribution.id})`);
+
+    if (config.autoPush) {
+      try {
+        await pushContext();
+        console.log(`\n✓ Submitted for approval (id: ${contribution.id}) — committed and pushed.`);
+      } catch (err) {
+        console.log(`\n✓ Submitted for approval (id: ${contribution.id}) — committed. Push failed (${err.message?.split('\n')[0] || err.stderr?.trim() || 'no remote?'}) — run \`git push\` manually.`);
+      }
+    } else {
+      console.log(`\n✓ Submitted for approval (id: ${contribution.id}) — committed. Run \`git push\` to send it to your manager.`);
+    }
+    console.log(`  Manager: after \`git pull\`, run \`teamctx review approve ${contribution.id}\` or \`teamctx review reject ${contribution.id}\`.`);
     return;
   }
 

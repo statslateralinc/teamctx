@@ -99,6 +99,24 @@ Approved items are **not** archived — the contribution already lives in `contr
 - If set → only `config.me === config.manager` may approve/reject; otherwise refuse with a clear one-liner.
 - No RBAC beyond this.
 
+## How the manager actually sees the queue
+
+The queue is shared via git — same delivery mechanism teamctx already uses for
+shared context. Enqueue and reject both commit the on-disk changes and push
+when `autoPush` is enabled:
+
+- `contribute` (enqueue path): writes `.teamctx/queue/<id>.json`, commits with
+  message `queue: <author> submission pending approval (<id>)`, and pushes.
+- `review approve`: applies ops → writes shared + role files → deletes queue
+  file → commits `context: <author> contribution (approved by <manager>)`,
+  pushes.
+- `review reject`: writes `.teamctx/rejected/<id>.json` → deletes queue file →
+  commits `review: rejected <id> by <manager> (<reason>)`, pushes.
+
+The manager runs `git pull` before `teamctx review list` to see fresh queue
+items. Notification (email on new pending) is a follow-up PR — the git-push is
+the durable delivery here.
+
 ## Concurrency note
 
 Between when a contribution is enqueued and when it's approved, `shared.json` may have shifted (other approvals landed). The approve flow re-applies the queued `operations` against the *current* `shared.json`. If a referenced parent id no longer exists (e.g. `parentWhyId`), the corresponding `addWhat` becomes a no-op — same silent-skip behaviour `applyOps` already has for stale refs today. Acceptable for MVP; a future PR can add "would drop N ops" warnings.

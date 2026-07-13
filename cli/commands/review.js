@@ -93,5 +93,12 @@ export async function reviewRejectCommand(id, opts) {
   deleteQueueItem(item.id);
 
   const reasonNote = opts?.reason ? ` (reason: ${opts.reason})` : '';
-  console.log(`\n✓ Rejected contribution ${item.id}${reasonNote}. Archived to .teamctx/rejected/.\n`);
+  await commitContext(`review: rejected ${item.id} by ${config.me}${opts?.reason ? ` (${opts.reason})` : ''}`);
+
+  if (config.autoPush) {
+    try { await pushContext(); console.log(`\n✓ Rejected contribution ${item.id}${reasonNote}. Archived, committed, and pushed.\n`); }
+    catch (err) { console.log(`\n✓ Rejected contribution ${item.id}${reasonNote}. Archived and committed. Push failed (${err.message?.split('\n')[0] || 'no remote?'}) — run \`git push\` manually.\n`); }
+  } else {
+    console.log(`\n✓ Rejected contribution ${item.id}${reasonNote}. Archived to .teamctx/rejected/ and committed. Run \`git push\` to share with your team.\n`);
+  }
 }
