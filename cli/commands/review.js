@@ -2,13 +2,12 @@ import {
   readConfig, readShared, writeShared, writeSharedMd, writeRoleFile,
   listQueue, readQueueItem, deleteQueueItem, writeRejected,
 } from '../../src/storage.js';
-import { applyOps } from '../../src/ops.js';
+import { applyQueueItem, buildRejected, canApprove } from '../../src/review.js';
 import { serializeToMd, generateRoleFile } from '../../src/context.js';
 import { commitContext, pushContext } from '../../src/git.js';
 
 function checkManagerGate(config) {
-  if (!config.manager) return;
-  if (config.me !== config.manager) {
+  if (!canApprove(config)) {
     console.error(`Error: only the configured manager (${config.manager}) may approve or reject. You are ${config.me}.`);
     process.exit(1);
   }
@@ -51,7 +50,7 @@ export async function reviewApproveCommand(id) {
   }
 
   const workstream = readShared();
-  const updated = applyOps(workstream, item.operations || [], item.id);
+  const updated = applyQueueItem(workstream, item);
 
   writeShared(updated);
   writeSharedMd(serializeToMd(updated, config.project, item.author));
@@ -90,15 +89,7 @@ export async function reviewRejectCommand(id, opts) {
     process.exit(1);
   }
 
-  const rejected = {
-    ...item,
-    status: 'rejected',
-    rejectedAt: new Date().toISOString(),
-    rejectedBy: config.me,
-    reason: opts?.reason || null,
-  };
-
-  writeRejected(rejected);
+  writeRejected(buildRejected(item, config.me, opts?.reason));
   deleteQueueItem(item.id);
 
   const reasonNote = opts?.reason ? ` (reason: ${opts.reason})` : '';
