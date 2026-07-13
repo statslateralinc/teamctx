@@ -12,6 +12,7 @@ import { reflectCommand } from './commands/reflect.js';
 import { contextCommand } from './commands/context.js';
 import { statusCommand } from './commands/status.js';
 import { configModelCommand, configGithubRawBaseCommand, configManagerEmailCommand, configDeployUrlCommand } from './commands/config.js';
+import { reviewListCommand, reviewApproveCommand, reviewRejectCommand } from './commands/review.js';
 import { setupCommand } from './commands/setup.js';
 
 program.name('teamctx').description('AI-native version control for team context').version('0.1.0');
@@ -36,6 +37,13 @@ program.command('pull').description('Fetch and process pending web contributions
 program.command('reflect').description('AI rewrites shared context for clarity').action(reflectCommand);
 program.command('context <role>').description('Print role context MD to stdout').action(contextCommand);
 program.command('status').description('Show project summary').action(statusCommand);
+
+const review = program.command('review').description('Review pending contributions awaiting manager approval');
+review.command('list').description('List all pending contributions').action(reviewListCommand);
+review.command('approve <id>').description('Approve a pending contribution — applies it to shared context').action(reviewApproveCommand);
+review.command('reject <id>').description('Reject a pending contribution — archives with optional reason')
+  .option('--reason <text>', 'Reason for rejection (archived alongside the item)')
+  .action(reviewRejectCommand);
 
 const config = program.command('config').description('View or change project settings');
 config.command('model [value]').description('Get or set the AI model').action(configModelCommand);
