@@ -24,9 +24,10 @@ const role = program.command('role').description('Manage team roles');
 role.command('add').description('Add a new role (AI-assisted)').option('--suggest', 'AI suggests roles from context').action(opts => roleCommand('add', opts));
 role.command('list').description('List all roles').action(() => roleCommand('list', {}));
 
-program.command('contribute <text>').description('Add context — AI updates all files')
+program.command('contribute <text>').description('Add context — AI proposes changes and enqueues for manager approval')
   .option('--decision', 'Tag as a human decision (never pruned by reflect)')
-  .option('--auto-approve', 'Skip diff review')
+  .option('--auto-approve', 'Skip the y/n confirmation on the proposed diff')
+  .option('--apply', 'Apply immediately instead of enqueueing for approval (solo mode)')
   .action(contributeCommand);
 
 program.command('ask <question>').description("Ask a question, answered from your team's context")
