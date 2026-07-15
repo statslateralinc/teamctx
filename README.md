@@ -209,6 +209,14 @@ See [`docs/mcp.md`](docs/mcp.md) for the full reference.
 
 ---
 
+## Recipes: bring your own agent
+
+Copy-paste prompts you can feed into Claude Code, Cursor, or ChatGPT to help
+you author well-shaped contributions and clean up the shared context. See
+[`recipes/`](recipes/README.md) for the recipe pack and per-tool guides.
+
+---
+
 ## Self-hosting (web layer)
 
 Deploy to Vercel to give non-technical team members two routes:
