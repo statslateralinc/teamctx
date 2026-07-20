@@ -11,6 +11,8 @@ import {
   writeSharedMd, readSharedMd,
   writeQueueItem, readQueueItem, listQueue, deleteQueueItem,
   writeRejected,
+  writeSnapshot, readSnapshot, listSnapshots, resolveSnapshotId,
+  readCurrentSnapshotPointer, writeCurrentSnapshotPointer,
 } from './storage.js';
 
 let dir;
@@ -136,5 +138,67 @@ describe('review queue', () => {
     expect(() => readQueueItem('foo/bar', dir)).toThrow(/invalid queue id/i);
     expect(() => readQueueItem('.', dir)).toThrow(/invalid queue id/i);
     expect(() => readQueueItem('', dir)).toThrow(/invalid queue id/i);
+  });
+});
+
+describe('snapshots', () => {
+  const mk = (id, createdAt, extras = {}) => ({
+    id, createdAt, createdBy: 'alice', message: 'm', status: 'pending',
+    shared: { id: 'main', name: '', whys: [] },
+    approvedAt: null, approvedBy: null, rejectedAt: null, rejectedBy: null, reason: null,
+    ...extras,
+  });
+
+  it('writes and reads a snapshot round-trip', () => {
+    const s = mk('snap-1720000000000-aaaaa', '2026-07-13T14:00:00.000Z');
+    writeSnapshot(s, dir);
+    expect(readSnapshot('snap-1720000000000-aaaaa', dir)).toEqual(s);
+  });
+
+  it('listSnapshots returns [] when snapshots/ does not exist', () => {
+    expect(listSnapshots(dir)).toEqual([]);
+  });
+
+  it('listSnapshots returns items sorted by createdAt asc, excludes current.json', () => {
+    writeSnapshot(mk('snap-1720000000001-bbbbb', '2026-07-13T15:00:00.000Z'), dir);
+    writeSnapshot(mk('snap-1720000000002-ccccc', '2026-07-13T14:00:00.000Z'), dir);
+    writeCurrentSnapshotPointer({ id: 'snap-1720000000002-ccccc' }, dir);
+    const ids = listSnapshots(dir).map(s => s.id);
+    expect(ids).toEqual(['snap-1720000000002-ccccc', 'snap-1720000000001-bbbbb']);
+  });
+
+  it('resolveSnapshotId returns full id for unique prefix', () => {
+    writeSnapshot(mk('snap-1720000000000-aaaaa', '2026-07-13T14:00:00.000Z'), dir);
+    writeSnapshot(mk('snap-1720000000001-bbbbb', '2026-07-13T15:00:00.000Z'), dir);
+    expect(resolveSnapshotId('snap-1720000000000', dir)).toBe('snap-1720000000000-aaaaa');
+    expect(resolveSnapshotId('snap-1720000000001-bbbbb', dir)).toBe('snap-1720000000001-bbbbb');
+  });
+
+  it('resolveSnapshotId throws when no match', () => {
+    writeSnapshot(mk('snap-1720000000000-aaaaa', '2026-07-13T14:00:00.000Z'), dir);
+    expect(() => resolveSnapshotId('snap-999', dir)).toThrow(/no snapshot matches/);
+    expect(() => resolveSnapshotId('nope', dir)).toThrow(/no snapshot matches/);
+  });
+
+  it('resolveSnapshotId throws when ambiguous', () => {
+    writeSnapshot(mk('snap-1720000000000-aaaaa', '2026-07-13T14:00:00.000Z'), dir);
+    writeSnapshot(mk('snap-1720000000001-bbbbb', '2026-07-13T15:00:00.000Z'), dir);
+    expect(() => resolveSnapshotId('snap-172', dir)).toThrow(/ambiguous/);
+  });
+
+  it('resolveSnapshotId prefers exact match over prefix', () => {
+    writeSnapshot(mk('snap-1', '2026-07-13T14:00:00.000Z'), dir);
+    writeSnapshot(mk('snap-10', '2026-07-13T15:00:00.000Z'), dir);
+    expect(resolveSnapshotId('snap-1', dir)).toBe('snap-1');
+  });
+
+  it('readCurrentSnapshotPointer returns null when missing', () => {
+    expect(readCurrentSnapshotPointer(dir)).toBeNull();
+  });
+
+  it('current pointer write/read round-trip', () => {
+    const p = { id: 'snap-1720000000000-aaaaa', approvedAt: '2026-07-13T14:00:00.000Z', approvedBy: 'manager', message: 'freeze' };
+    writeCurrentSnapshotPointer(p, dir);
+    expect(readCurrentSnapshotPointer(dir)).toEqual(p);
   });
 });

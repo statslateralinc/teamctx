@@ -116,3 +116,52 @@ export function writeRejected(item, dir) {
   mkdirSync(d, { recursive: true });
   writeFileSync(join(d, `${item.id}.json`), JSON.stringify(item, null, 2));
 }
+
+export function snapshotsDir(dir) {
+  return resolve(dir, 'snapshots');
+}
+
+export function writeSnapshot(snapshot, dir) {
+  const d = snapshotsDir(dir);
+  mkdirSync(d, { recursive: true });
+  writeFileSync(join(d, `${snapshot.id}.json`), JSON.stringify(snapshot, null, 2));
+}
+
+export function readSnapshot(id, dir) {
+  return JSON.parse(readFileSync(join(snapshotsDir(dir), `${id}.json`), 'utf-8'));
+}
+
+export function listSnapshots(dir) {
+  const d = snapshotsDir(dir);
+  if (!existsSync(d)) return [];
+  return readdirSync(d)
+    .filter(name => name.endsWith('.json') && name !== 'current.json')
+    .map(name => JSON.parse(readFileSync(join(d, name), 'utf-8')))
+    .sort((a, b) => (a.createdAt || '').localeCompare(b.createdAt || ''));
+}
+
+export function resolveSnapshotId(prefix, dir) {
+  const d = snapshotsDir(dir);
+  if (!existsSync(d)) throw new Error(`no snapshot matches "${prefix}"`);
+  const ids = readdirSync(d)
+    .filter(name => name.endsWith('.json') && name !== 'current.json')
+    .map(name => name.slice(0, -5));
+  const matches = ids.filter(id => id === prefix || id.startsWith(prefix));
+  if (matches.length === 0) throw new Error(`no snapshot matches "${prefix}"`);
+  const exact = matches.find(id => id === prefix);
+  if (exact) return exact;
+  if (matches.length > 1) throw new Error(`prefix "${prefix}" is ambiguous: ${matches.join(', ')}`);
+  return matches[0];
+}
+
+export function readCurrentSnapshotPointer(dir) {
+  const p = join(snapshotsDir(dir), 'current.json');
+  if (!existsSync(p)) return null;
+  return JSON.parse(readFileSync(p, 'utf-8'));
+}
+
+export function writeCurrentSnapshotPointer(pointer, dir) {
+  const d = snapshotsDir(dir);
+  mkdirSync(d, { recursive: true });
+  writeFileSync(join(d, 'current.json'), JSON.stringify(pointer, null, 2));
+}
