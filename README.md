@@ -66,6 +66,12 @@ teamctx contribute "We decided to use AWS (Why). API migration starts next sprin
 | `teamctx review list` | List pending contributions awaiting manager approval |
 | `teamctx review approve <id>` | Approve a pending contribution — applies to shared context |
 | `teamctx review reject <id> [--reason "..."]` | Reject a pending contribution — archives with optional reason |
+| `teamctx snapshot create [-m "..."]` | Freeze the current shared context as a pending snapshot |
+| `teamctx snapshot list` | List all snapshots (marks the current-approved one) |
+| `teamctx snapshot show <id>` | Print the snapshotted context to stdout (accepts a unique prefix) |
+| `teamctx snapshot approve <id>` | Approve a pending snapshot — sets it as the current-approved state |
+| `teamctx snapshot reject <id> [--reason "..."]` | Reject a pending snapshot |
+| `teamctx snapshot current` | Show the current-approved snapshot |
 | `teamctx config manager <name>` | Set the manager identity — only that identity may approve/reject |
 | `teamctx status` | Project summary |
 | `teamctx mcp` | Start an MCP server over stdio so AI clients can call teamctx tools |
@@ -316,6 +322,7 @@ Every `teamctx contribute` commits and pushes to your private repo. Vercel's git
   contributions.jsonl      # append-only audit log
   queue/                   # pending contributions awaiting manager approval
   rejected/                # archived rejected contributions (with reason)
+  snapshots/               # versioned context checkpoints; current.json points to the last approved
   pending/                 # raw web submissions inbox (processed by `teamctx pull`)
 ```
 

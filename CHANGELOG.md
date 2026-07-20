@@ -24,6 +24,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `teamctx mcp` — an MCP server over stdio exposing `get_context`,
   `get_role_context`, `ask`, and `submit_contribution` for Claude Code, Claude
   Desktop, Cursor, and other MCP-aware clients. See [docs/mcp.md](docs/mcp.md).
+- Context snapshots: `teamctx snapshot create / list / show / approve / reject /
+  current` — freeze the whole shared context as a versioned checkpoint that the
+  manager signs off on. Snapshots live under `.teamctx/snapshots/` with a
+  `current.json` pointer to the last approved state. Git-style ID prefixes
+  supported on all id-taking commands. Reuses the manager identity gate.
 
 ### Changed
 - `teamctx contribute` no longer applies to shared context on submission by
