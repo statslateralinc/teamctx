@@ -24,12 +24,22 @@ export const DEFAULT_MODEL_BY_PROVIDER = {
   gemini: 'gemini-flash-latest',
 };
 
+export const FAST_MODEL_BY_PROVIDER = {
+  anthropic: 'claude-haiku-4-5',
+  openai: 'gpt-4o-mini',
+  gemini: 'gemini-flash-latest',
+};
+
 export function getModelsFor(providerId) {
   return MODELS_BY_PROVIDER[providerId] || [];
 }
 
 export function getDefaultModelFor(providerId) {
   return DEFAULT_MODEL_BY_PROVIDER[providerId];
+}
+
+export function getFastModelFor(providerId) {
+  return FAST_MODEL_BY_PROVIDER[providerId];
 }
 
 export const MODELS = MODELS_BY_PROVIDER.anthropic;
