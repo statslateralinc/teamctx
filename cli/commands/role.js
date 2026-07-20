@@ -1,5 +1,5 @@
 import { ask, askChoice } from '../prompt.js';
-import { readConfig, writeConfig, readShared, writeRoleFile } from '../../src/storage.js';
+import { readConfig, writeConfig, readShared, writeRoleFile, readContributions } from '../../src/storage.js';
 import { addRole, suggestRoles, slugify } from '../../src/roles.js';
 import { generateRoleFile } from '../../src/context.js';
 import { commitContext, pushContext } from '../../src/git.js';
@@ -92,8 +92,9 @@ async function addRoleInteractive(prefill = {}) {
 
   console.log(`\n→ Generating context file for ${name}...`);
   const workstream = readShared();
+  const contributions = readContributions();
   const roleData = updatedConfig.roles.find(r => r.slug === slug);
-  const md = await generateRoleFile(workstream, roleData, config.project, config);
+  const md = await generateRoleFile(workstream, roleData, config.project, config, contributions);
   writeRoleFile(slug, md);
 
   await commitContext(`feat: add role "${slug}" to teamctx`);

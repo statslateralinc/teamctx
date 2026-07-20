@@ -84,6 +84,7 @@ export default async function handler(req, res) {
       ts: new Date().toISOString(),
       author: String(author || 'anonymous').trim().slice(0, 100),
       text: String(text).trim().slice(0, 10000),
+      source: 'web',
     };
 
     try {
