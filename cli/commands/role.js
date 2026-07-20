@@ -3,7 +3,7 @@ import { readConfig, writeConfig, readShared, writeRoleFile, readContributions }
 import { addRole, suggestRoles, slugify } from '../../src/roles.js';
 import { generateRoleFile } from '../../src/context.js';
 import { commitContext, pushContext } from '../../src/git.js';
-import { callClaude, extractJson } from '../../src/ai.js';
+import { callClaude, extractJson, getFastModelFor } from '../../src/ai.js';
 
 async function suggestRoleDetails(name, workstream, config) {
   const tree = workstream.whys.map(w => `- ${w.text}`).join('\n') || '(no context yet)';
@@ -15,7 +15,7 @@ async function suggestRoleDetails(name, workstream, config) {
     `Return JSON: {"responsibilities": "...", "excludes": "..."}`,
     `Keep each under 15 words. JSON only.`,
   ].join('\n');
-  const raw = await callClaude({ prompt, model: 'claude-haiku-4-5' });
+  const raw = await callClaude({ prompt, model: getFastModelFor(config.provider), config });
   const parsed = extractJson(raw);
   return { responsibilities: parsed.responsibilities || '', excludes: parsed.excludes || '' };
 }

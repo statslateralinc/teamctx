@@ -32,7 +32,7 @@ export async function suggestRoles(workstream, config) {
     `Focus on roles that make decisions or coordinate across teams. JSON only.`,
   ].join('\n');
 
-  const raw = await callClaude({ prompt, model: config.model });
+  const raw = await callClaude({ prompt, model: config.model, config });
   const parsed = extractJson(raw);
   return Array.isArray(parsed.roles) ? parsed.roles : [];
 }

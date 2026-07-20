@@ -48,6 +48,7 @@ export async function updateShared(workstream, contribution, config) {
     contribution: contribution.text,
     source: contribution.author,
     model: config.model,
+    config,
   });
   const updated = applyOps(workstream, operations, contribution.id);
   return { workstream: updated, summary, operations };
@@ -90,7 +91,7 @@ export async function generateRoleFile(workstream, role, projectName, config, co
     `Return ONLY the markdown content.`,
   ].filter(Boolean).join('\n');
 
-  return callClaude({ prompt, model: config.model });
+  return callClaude({ prompt, model: config.model, config });
 }
 
 export async function generateReflection(workstream, contributions, config) {
@@ -114,7 +115,7 @@ export async function generateReflection(workstream, contributions, config) {
     `Preserve ALL existing ids on nodes you keep. JSON only.`,
   ].join('\n');
 
-  return callClaude({ prompt, model: config.model, system, max_tokens: 8192 });
+  return callClaude({ prompt, model: config.model, system, max_tokens: 8192, config });
 }
 
 export async function answerQuestion({ sharedMd, roleMd, question, config }) {
@@ -130,5 +131,5 @@ export async function answerQuestion({ sharedMd, roleMd, question, config }) {
   ].join(' ');
   const prompt = `Context:\n\n${context}\n\n---\n\nQuestion: ${question}`;
 
-  return callClaude({ prompt, model: config.model, system });
+  return callClaude({ prompt, model: config.model, system, config });
 }

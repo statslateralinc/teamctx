@@ -29,6 +29,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   manager signs off on. Snapshots live under `.teamctx/snapshots/` with a
   `current.json` pointer to the last approved state. Git-style ID prefixes
   supported on all id-taking commands. Reuses the manager identity gate.
+- Provider-agnostic AI layer — teamctx now runs on Anthropic (default),
+  OpenAI, or Google Gemini via a shared `complete()` interface. Each
+  provider reads its own API key from the environment.
+- `teamctx config provider <anthropic|openai|gemini>` sets the active
+  provider on an existing project; `teamctx init` also asks for it on new
+  projects and shows that provider's model list.
+- Per-provider curated model registry and lax model validation, so newly
+  released models work without a package update.
 
 ### Changed
 - `teamctx contribute` no longer applies to shared context on submission by

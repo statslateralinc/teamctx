@@ -27,7 +27,7 @@ ChatGPT, or Gemini. No server, no seats, bring your own key.
 ## Quickstart
 
 ```bash
-# Prerequisites: Node 18+, git, Anthropic API key in .env.local
+# Prerequisites: Node 18+, git, and an Anthropic, OpenAI, or Gemini API key in .env.local
 
 npx teamctx init
 
@@ -73,8 +73,12 @@ teamctx contribute "We decided to use AWS (Why). API migration starts next sprin
 | `teamctx snapshot reject <id> [--reason "..."]` | Reject a pending snapshot |
 | `teamctx snapshot current` | Show the current-approved snapshot |
 | `teamctx config manager <name>` | Set the manager identity — only that identity may approve/reject |
+| `teamctx config provider <anthropic\|openai\|gemini>` | Pick which LLM provider teamctx calls |
+| `teamctx config model <id>` | Pick a model from the selected provider's list |
 | `teamctx status` | Project summary |
 | `teamctx mcp` | Start an MCP server over stdio so AI clients can call teamctx tools |
+
+See [docs/providers.md](docs/providers.md) for the full provider guide.
 
 ---
 

@@ -1,27 +1,53 @@
-import Anthropic from '@anthropic-ai/sdk';
 import { jsonrepair } from 'jsonrepair';
+import { getProvider } from './providers/index.js';
 
-export const MODELS = [
-  { id: 'claude-opus-4-7', label: 'Opus 4.7 — sharpest' },
-  { id: 'claude-sonnet-4-6', label: 'Sonnet 4.6 — balanced' },
-  { id: 'claude-haiku-4-5', label: 'Haiku 4.5 — fast' },
-];
+export const MODELS_BY_PROVIDER = {
+  anthropic: [
+    { id: 'claude-opus-4-7', label: 'Opus 4.7 — sharpest' },
+    { id: 'claude-sonnet-4-6', label: 'Sonnet 4.6 — balanced' },
+    { id: 'claude-haiku-4-5', label: 'Haiku 4.5 — fast' },
+  ],
+  openai: [
+    { id: 'gpt-4.1', label: 'GPT-4.1 — sharpest' },
+    { id: 'gpt-4.1-mini', label: 'GPT-4.1 mini — balanced' },
+    { id: 'gpt-4o-mini', label: 'GPT-4o mini — fast' },
+  ],
+  gemini: [
+    { id: 'gemini-pro-latest', label: 'Gemini Pro (latest) — sharpest' },
+    { id: 'gemini-flash-latest', label: 'Gemini Flash (latest) — balanced' },
+  ],
+};
 
-export const DEFAULT_MODEL = 'claude-sonnet-4-6';
+export const DEFAULT_MODEL_BY_PROVIDER = {
+  anthropic: 'claude-sonnet-4-6',
+  openai: 'gpt-4.1-mini',
+  gemini: 'gemini-flash-latest',
+};
 
-export async function callClaude({ prompt, model = DEFAULT_MODEL, system = '', max_tokens = 4096 }) {
-  const apiKey = process.env.ANTHROPIC_API_KEY;
-  if (!apiKey) {
-    throw new Error('ANTHROPIC_API_KEY not set. Add it to your .env file or shell environment.');
-  }
-  const client = new Anthropic({ apiKey });
-  const msg = await client.messages.create({
-    model,
-    max_tokens,
-    ...(system ? { system } : {}),
-    messages: [{ role: 'user', content: prompt }],
-  });
-  return msg.content.filter(b => b.type === 'text').map(b => b.text).join('\n').trim();
+export const FAST_MODEL_BY_PROVIDER = {
+  anthropic: 'claude-haiku-4-5',
+  openai: 'gpt-4o-mini',
+  gemini: 'gemini-flash-latest',
+};
+
+export function getModelsFor(providerId) {
+  return MODELS_BY_PROVIDER[providerId] || [];
+}
+
+export function getDefaultModelFor(providerId) {
+  return DEFAULT_MODEL_BY_PROVIDER[providerId];
+}
+
+export function getFastModelFor(providerId) {
+  return FAST_MODEL_BY_PROVIDER[providerId];
+}
+
+export const MODELS = MODELS_BY_PROVIDER.anthropic;
+export const DEFAULT_MODEL = DEFAULT_MODEL_BY_PROVIDER.anthropic;
+
+export async function callClaude({ prompt, model = DEFAULT_MODEL, system = '', max_tokens = 4096, config }) {
+  const provider = getProvider(config);
+  return provider.complete({ prompt, model, system, max_tokens });
 }
 
 export function extractJson(text) {
@@ -54,7 +80,7 @@ function stripWorkstreamForPrompt(workstream) {
   };
 }
 
-export async function proposeDiff({ workstream, contribution, source, model }) {
+export async function proposeDiff({ workstream, contribution, source, model, config }) {
   const system =
     'You distill a single team contribution into typed edits to a hierarchical ' +
     'Why / What / How record. Output STRICT JSON only — no markdown fences, no commentary.';
@@ -87,7 +113,7 @@ export async function proposeDiff({ workstream, contribution, source, model }) {
     'parentWhyId and parentWhatId MUST exist in the current record. JSON only.',
   ].join('\n');
 
-  const raw = await callClaude({ prompt, model, system });
+  const raw = await callClaude({ prompt, model, system, config });
   const parsed = extractJson(raw);
   return {
     summary: String(parsed.summary ?? '(no summary)'),

@@ -1,5 +1,5 @@
 import { readConfig, writeConfig } from '../../src/storage.js';
-import { MODELS } from '../../src/ai.js';
+import { getModelsFor, getDefaultModelFor } from '../../src/ai.js';
 
 const ALIASES = {
   opus: 'claude-opus-4-7',
@@ -7,32 +7,73 @@ const ALIASES = {
   haiku: 'claude-haiku-4-5',
 };
 
-export async function configModelCommand(value) {
+const PROVIDER_KEYS = {
+  anthropic: 'ANTHROPIC_API_KEY',
+  openai: 'OPENAI_API_KEY',
+  gemini: 'GEMINI_API_KEY',
+};
+
+export async function configProviderCommand(value) {
   const config = readConfig();
+  const current = config.provider || 'anthropic';
 
   if (!value) {
-    const current = MODELS.find(m => m.id === config.model);
-    console.log(`\nCurrent model: ${config.model}${current ? ` (${current.label})` : ''}`);
-    console.log('\nAvailable models:');
-    MODELS.forEach(m => {
+    console.log(`\nCurrent provider: ${current}`);
+    console.log('\nAvailable providers: anthropic, openai, gemini');
+    console.log('\nUsage: teamctx config provider <anthropic|openai|gemini>');
+    return;
+  }
+
+  const v = value.toLowerCase();
+  if (!PROVIDER_KEYS[v]) {
+    console.error(`Error: unknown provider "${value}". Valid: ${Object.keys(PROVIDER_KEYS).join(', ')}.`);
+    process.exit(1);
+  }
+
+  const currentModel = config.model;
+  const knownForNew = getModelsFor(v);
+  const stillValid = knownForNew.some(m => m.id === currentModel);
+  const nextModel = stillValid ? currentModel : getDefaultModelFor(v);
+
+  writeConfig({ ...config, provider: v, model: nextModel });
+  console.log(`✓ Provider set to ${v}`);
+  if (!stillValid) {
+    console.log(`  Model reset to ${nextModel} (was "${currentModel}", not valid for ${v}).`);
+    console.log(`  Change with: teamctx config model <id>`);
+  }
+  if (!process.env[PROVIDER_KEYS[v]]) {
+    console.log(`Note: ${PROVIDER_KEYS[v]} is not set. Add it to .env.local before running teamctx contribute, ask, or reflect.`);
+  }
+}
+
+export async function configModelCommand(value) {
+  const config = readConfig();
+  const providerId = config.provider || 'anthropic';
+  const models = getModelsFor(providerId);
+
+  if (!value) {
+    const current = models.find(m => m.id === config.model);
+    console.log(`\nProvider: ${providerId}`);
+    console.log(`Current model: ${config.model}${current ? ` (${current.label})` : ''}`);
+    console.log(`\nAvailable models for ${providerId}:`);
+    models.forEach(m => {
       const marker = m.id === config.model ? ' ←' : '';
       console.log(`  ${m.id.padEnd(24)} ${m.label}${marker}`);
     });
-    console.log('\nUsage: teamctx config model <opus|sonnet|haiku|full-model-id>');
+    console.log('\nUsage: teamctx config model <model-id>');
     return;
   }
 
   const resolved = ALIASES[value.toLowerCase()] || value;
-  if (!MODELS.find(m => m.id === resolved)) {
-    console.error(`Error: unknown model "${value}".`);
-    console.error(`Valid options: ${MODELS.map(m => m.id).join(', ')}`);
-    console.error(`Or use short names: opus, sonnet, haiku`);
-    process.exit(1);
+  if (models.length && !models.find(m => m.id === resolved)) {
+    console.warn(`Warning: "${resolved}" is not in the known model list for ${providerId}.`);
+    console.warn(`Known: ${models.map(m => m.id).join(', ')}`);
+    console.warn('Setting it anyway — remove or change with `teamctx config model` if it doesn\'t work.');
   }
 
   writeConfig({ ...config, model: resolved });
-  const label = MODELS.find(m => m.id === resolved).label;
-  console.log(`✓ Model set to ${resolved} (${label})`);
+  const known = models.find(m => m.id === resolved);
+  console.log(`✓ Model set to ${resolved}${known ? ` (${known.label})` : ''}`);
 }
 
 export async function configGithubRawBaseCommand(value) {
