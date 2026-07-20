@@ -14,6 +14,7 @@ import { statusCommand } from './commands/status.js';
 import { configModelCommand, configGithubRawBaseCommand, configManagerCommand, configManagerEmailCommand, configDeployUrlCommand } from './commands/config.js';
 import { reviewListCommand, reviewApproveCommand, reviewRejectCommand } from './commands/review.js';
 import { setupCommand } from './commands/setup.js';
+import { mcpCommand } from './commands/mcp.js';
 
 program.name('teamctx').description('AI-native version control for team context').version('0.1.0');
 
@@ -38,6 +39,9 @@ program.command('pull').description('Fetch and process pending web contributions
 program.command('reflect').description('AI rewrites shared context for clarity').action(reflectCommand);
 program.command('context <role>').description('Print role context MD to stdout').action(contextCommand);
 program.command('status').description('Show project summary').action(statusCommand);
+program.command('mcp').description('Start MCP server over stdio (for Claude Code, Claude Desktop, Cursor, etc.)')
+  .option('-p, --project <path>', 'Absolute path to the teamctx project (defaults to $TEAMCTX_PROJECT_DIR or cwd)')
+  .action(mcpCommand);
 
 const review = program.command('review').description('Review pending contributions awaiting manager approval');
 review.command('list').description('List all pending contributions').action(reviewListCommand);

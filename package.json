@@ -34,6 +34,7 @@
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.52.0",
+    "@modelcontextprotocol/sdk": "^1.29.0",
     "@vercel/kv": "^3.0.0",
     "commander": "^12.0.0",
     "dotenv": "^16.0.0",

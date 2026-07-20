@@ -21,6 +21,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   (`cli` or `web`), and nodes backed by a `--decision` contribution render
   inline provenance markers (`*[decision — author, date, via source]*`) in
   `shared.md`, in every compiled role file, and in `teamctx ask` answers.
+- `teamctx mcp` — an MCP server over stdio exposing `get_context`,
+  `get_role_context`, `ask`, and `submit_contribution` for Claude Code, Claude
+  Desktop, Cursor, and other MCP-aware clients. See [docs/mcp.md](docs/mcp.md).
 
 ### Changed
 - `teamctx contribute` no longer applies to shared context on submission by
