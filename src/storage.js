@@ -1,4 +1,4 @@
-import { readFileSync, writeFileSync, mkdirSync, existsSync, appendFileSync } from 'fs';
+import { readFileSync, writeFileSync, mkdirSync, existsSync, appendFileSync, readdirSync, unlinkSync } from 'fs';
 import { join, dirname } from 'path';
 
 function resolve(dir, ...parts) {
@@ -51,6 +51,12 @@ function sanitizeSlug(slug) {
   }
 }
 
+function sanitizeQueueId(id) {
+  if (typeof id !== 'string' || !/^[a-zA-Z0-9_-]+$/.test(id)) {
+    throw new Error(`Invalid queue id: "${id}"`);
+  }
+}
+
 export function writeRoleFile(slug, content, dir) {
   sanitizeSlug(slug);
   const rolesDir = resolve(dir, 'context', 'roles');
@@ -73,4 +79,40 @@ export function writeSharedMd(content, dir) {
   const contextDir = resolve(dir, 'context');
   mkdirSync(contextDir, { recursive: true });
   writeFileSync(join(contextDir, 'shared.md'), content);
+}
+
+export function queueDir(dir) {
+  return resolve(dir, 'queue');
+}
+
+export function writeQueueItem(item, dir) {
+  sanitizeQueueId(item?.id);
+  const d = queueDir(dir);
+  mkdirSync(d, { recursive: true });
+  writeFileSync(join(d, `${item.id}.json`), JSON.stringify(item, null, 2));
+}
+
+export function readQueueItem(id, dir) {
+  sanitizeQueueId(id);
+  return JSON.parse(readFileSync(join(queueDir(dir), `${id}.json`), 'utf-8'));
+}
+
+export function listQueue(dir) {
+  const d = queueDir(dir);
+  if (!existsSync(d)) return [];
+  return readdirSync(d)
+    .filter(name => name.endsWith('.json'))
+    .map(name => JSON.parse(readFileSync(join(d, name), 'utf-8')))
+    .sort((a, b) => (a.createdAt || '').localeCompare(b.createdAt || ''));
+}
+
+export function deleteQueueItem(id, dir) {
+  sanitizeQueueId(id);
+  unlinkSync(join(queueDir(dir), `${id}.json`));
+}
+
+export function writeRejected(item, dir) {
+  const d = resolve(dir, 'rejected');
+  mkdirSync(d, { recursive: true });
+  writeFileSync(join(d, `${item.id}.json`), JSON.stringify(item, null, 2));
 }

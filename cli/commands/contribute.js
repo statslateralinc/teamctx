@@ -1,5 +1,5 @@
 import { ask } from '../prompt.js';
-import { readConfig, readShared, writeShared, writeSharedMd, appendContribution, writeRoleFile, readContributions } from '../../src/storage.js';
+import { readConfig, readShared, writeShared, writeSharedMd, appendContribution, writeRoleFile, writeQueueItem, readContributions } from '../../src/storage.js';
 import { updateShared, generateRoleFile, serializeToMd } from '../../src/context.js';
 import { commitContext, pushContext } from '../../src/git.js';
 
@@ -29,22 +29,52 @@ export async function contributeCommand(text, opts) {
   if (operations.length === 0) {
     console.log('No changes to context tree (contribution logged).');
     return;
-  } else {
-    console.log(`\nProposed changes (${operations.length} op${operations.length !== 1 ? 's' : ''}):`);
-    console.log(`  Summary: ${summary}`);
-    operations.forEach(op => {
-      const label = op.type === 'addWhy' ? `+ Why: ${op.text}`
-        : op.type === 'addWhat' ? `+ What: ${op.text}`
-        : op.type === 'addHow' ? `+ How: ${op.text}`
-        : op.type === 'editStatement' ? `~ Edit: ${op.text}`
-        : `- Delete: ${op.id}`;
-      console.log(`  ${label}`);
+  }
+
+  console.log(`\nProposed changes (${operations.length} op${operations.length !== 1 ? 's' : ''}):`);
+  console.log(`  Summary: ${summary}`);
+  operations.forEach(op => {
+    const label = op.type === 'addWhy' ? `+ Why: ${op.text}`
+      : op.type === 'addWhat' ? `+ What: ${op.text}`
+      : op.type === 'addHow' ? `+ How: ${op.text}`
+      : op.type === 'editStatement' ? `~ Edit: ${op.text}`
+      : `- Delete: ${op.id}`;
+    console.log(`  ${label}`);
+  });
+
+  if (!opts.autoApprove) {
+    const prompt = opts.apply ? '\nApply these changes now? (y/n)' : '\nSubmit for manager approval? (y/n)';
+    const answer = await ask(prompt, 'y');
+    if (answer.toLowerCase() !== 'y') { console.log('Changes discarded. Contribution is logged.'); return; }
+  }
+
+  if (!opts.apply) {
+    writeQueueItem({
+      id: contribution.id,
+      status: 'pending',
+      createdAt: contribution.ts,
+      author: contribution.author,
+      source: 'cli',
+      text: contribution.text,
+      tagged: contribution.tagged,
+      summary,
+      operations,
     });
 
-    if (!opts.autoApprove) {
-      const answer = await ask('\nApply these changes? (y/n)', 'y');
-      if (answer.toLowerCase() !== 'y') { console.log('Changes discarded. Contribution is logged.'); return; }
+    await commitContext(`queue: ${config.me} submission pending approval (${contribution.id})`);
+
+    if (config.autoPush) {
+      try {
+        await pushContext();
+        console.log(`\n✓ Submitted for approval (id: ${contribution.id}) — committed and pushed.`);
+      } catch (err) {
+        console.log(`\n✓ Submitted for approval (id: ${contribution.id}) — committed. Push failed (${err.message?.split('\n')[0] || err.stderr?.trim() || 'no remote?'}) — run \`git push\` manually.`);
+      }
+    } else {
+      console.log(`\n✓ Submitted for approval (id: ${contribution.id}) — committed. Run \`git push\` to send it to your manager.`);
     }
+    console.log(`  Manager: after \`git pull\`, run \`teamctx review approve ${contribution.id}\` or \`teamctx review reject ${contribution.id}\`.`);
+    return;
   }
 
   writeShared(updated);

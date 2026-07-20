@@ -52,9 +52,10 @@ teamctx contribute "We decided to use AWS (Why). API migration starts next sprin
 | Command | Description |
 |---|---|
 | `teamctx init` | Set up `.teamctx/` in the current git repo |
-| `teamctx contribute "<text>"` | Add context — AI updates everything and pushes |
+| `teamctx contribute "<text>"` | Add context — AI proposes changes and enqueues for manager approval |
 | `teamctx contribute "<text>" --decision` | Tag as a human decision (never pruned) |
-| `teamctx contribute "<text>" --auto-approve` | Skip diff review |
+| `teamctx contribute "<text>" --auto-approve` | Skip the y/n confirmation on the proposed diff |
+| `teamctx contribute "<text>" --apply` | Apply immediately instead of enqueueing (solo mode) |
 | `teamctx role add` | Add a role interactively (AI-assisted) |
 | `teamctx role add --suggest` | AI suggests roles from current context |
 | `teamctx role list` | List all roles and their context URLs |
@@ -62,6 +63,10 @@ teamctx contribute "We decided to use AWS (Why). API migration starts next sprin
 | `teamctx ask "<question>" [--role <slug>]` | Ask a question, answered from your team context |
 | `teamctx pull` | Fetch and process web contributions |
 | `teamctx reflect` | AI rewrites context for clarity (run weekly) |
+| `teamctx review list` | List pending contributions awaiting manager approval |
+| `teamctx review approve <id>` | Approve a pending contribution — applies to shared context |
+| `teamctx review reject <id> [--reason "..."]` | Reject a pending contribution — archives with optional reason |
+| `teamctx config manager <name>` | Set the manager identity — only that identity may approve/reject |
 | `teamctx status` | Project summary |
 | `teamctx mcp` | Start an MCP server over stdio so AI clients can call teamctx tools |
 
@@ -302,13 +307,16 @@ Every `teamctx contribute` commits and pushes to your private repo. Vercel's git
 
 ```
 .teamctx/
-  config.json              # project name, roles, model, auto-push
+  config.json              # project name, roles, model, auto-push, manager
   shared.json              # full Why/What/How tree (source of truth)
   context/
     shared.md              # human-readable, auto-regenerated
     roles/
       <slug>.md            # role-specific context file — this is what gets shared
   contributions.jsonl      # append-only audit log
+  queue/                   # pending contributions awaiting manager approval
+  rejected/                # archived rejected contributions (with reason)
+  pending/                 # raw web submissions inbox (processed by `teamctx pull`)
 ```
 
 ---

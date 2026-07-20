@@ -47,6 +47,28 @@ export async function configGithubRawBaseCommand(value) {
   console.log(`✓ githubRawBase set to ${value}`);
 }
 
+export async function configManagerCommand(value) {
+  const config = readConfig();
+  if (!value) {
+    console.log(`\nCurrent manager: ${config.manager || '(not set — solo mode: anyone can approve/reject)'}`);
+    console.log(`Your identity (config.me): ${config.me}`);
+    console.log('\nUsage: teamctx config manager <name>');
+    console.log('Set to your `config.me` value to enable the approval gate.');
+    console.log('Set to "" (empty) to disable the gate (solo mode).');
+    return;
+  }
+  const next = value === '""' || value === "''" ? '' : value;
+  writeConfig({ ...config, manager: next });
+  if (!next) {
+    console.log('✓ Manager gate cleared (solo mode: anyone can approve/reject).');
+  } else {
+    console.log(`✓ Manager set to ${next}. Only this identity may approve/reject pending contributions.`);
+    if (config.me !== next) {
+      console.log(`Note: your current identity (${config.me}) will no longer be able to approve/reject.`);
+    }
+  }
+}
+
 export async function configManagerEmailCommand(value) {
   const config = readConfig();
   if (!value) {
