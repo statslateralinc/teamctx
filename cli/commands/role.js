@@ -56,7 +56,8 @@ export async function roleAssignCommand(slug, opts) {
   writeConfig(updatedConfig);
 
   const workstream = readWorkstream(targetId);
-  const md = await generateRoleFile(workstream, updatedConfig.roles.find(r => r.slug === slug), updatedConfig.project, updatedConfig);
+  const contributions = readContributions();
+  const md = await generateRoleFile(workstream, updatedConfig.roles.find(r => r.slug === slug), updatedConfig.project, updatedConfig, contributions);
   writeRoleFile(slug, md);
 
   await commitContext(`role: assign "${slug}" to workstream ${targetId}`);

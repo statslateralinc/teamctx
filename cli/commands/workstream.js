@@ -1,5 +1,5 @@
 import { ask } from '../prompt.js';
-import { readConfig, writeConfig, readWorkstream, writeWorkstream, writeWorkstreamMd, listWorkstreamIds, writeRoleFile } from '../../src/storage.js';
+import { readConfig, writeConfig, readWorkstream, writeWorkstream, writeWorkstreamMd, listWorkstreamIds, writeRoleFile, readContributions } from '../../src/storage.js';
 import { proposeSubworkstreams, serializeToMd, generateRoleFile } from '../../src/context.js';
 import { commitContext, pushContext } from '../../src/git.js';
 import { slugify } from '../../src/roles.js';
@@ -179,16 +179,17 @@ async function applySplit({ source, sourceId, split, config, acceptAll }) {
   };
   writeConfig(updatedConfig);
 
+  const contributions = readContributions();
   for (const slug of moveSlugs) {
     const role = updatedConfig.roles.find(r => r.slug === slug);
-    const md = await generateRoleFile(newWs, role, updatedConfig.project, updatedConfig);
+    const md = await generateRoleFile(newWs, role, updatedConfig.project, updatedConfig, contributions);
     writeRoleFile(slug, md);
     console.log(`  ✓ Moved role "${slug}" to "${split.name}" and regenerated its context.`);
   }
 
   const stillOnSource = (updatedConfig.roles || []).filter(r => (r.workstream || 'main') === sourceId);
   for (const role of stillOnSource) {
-    const md = await generateRoleFile(updatedSource, role, updatedConfig.project, updatedConfig);
+    const md = await generateRoleFile(updatedSource, role, updatedConfig.project, updatedConfig, contributions);
     writeRoleFile(role.slug, md);
   }
 
