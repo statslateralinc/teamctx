@@ -13,6 +13,10 @@ import { contextCommand } from './commands/context.js';
 import { statusCommand } from './commands/status.js';
 import { configModelCommand, configGithubRawBaseCommand, configManagerCommand, configManagerEmailCommand, configDeployUrlCommand } from './commands/config.js';
 import { reviewListCommand, reviewApproveCommand, reviewRejectCommand } from './commands/review.js';
+import {
+  snapshotCreateCommand, snapshotListCommand, snapshotShowCommand,
+  snapshotApproveCommand, snapshotRejectCommand, snapshotCurrentCommand,
+} from './commands/snapshot.js';
 import { setupCommand } from './commands/setup.js';
 import { mcpCommand } from './commands/mcp.js';
 
@@ -49,6 +53,18 @@ review.command('approve <id>').description('Approve a pending contribution — a
 review.command('reject <id>').description('Reject a pending contribution — archives with optional reason')
   .option('--reason <text>', 'Reason for rejection (archived alongside the item)')
   .action(reviewRejectCommand);
+
+const snapshot = program.command('snapshot').description('Version and approve the whole shared context as a known-good state');
+snapshot.command('create').description('Freeze the current shared context as a pending snapshot')
+  .option('-m, --message <text>', 'Label for the snapshot (e.g. "pre-launch freeze")')
+  .action(snapshotCreateCommand);
+snapshot.command('list').description('List all snapshots (marks the current-approved with *)').action(snapshotListCommand);
+snapshot.command('show <id>').description('Print the snapshotted shared context to stdout (id or unique prefix)').action(snapshotShowCommand);
+snapshot.command('approve <id>').description('Approve a pending snapshot — updates the current-approved pointer').action(snapshotApproveCommand);
+snapshot.command('reject <id>').description('Reject a pending snapshot')
+  .option('--reason <text>', 'Reason for rejection (recorded in the snapshot)')
+  .action(snapshotRejectCommand);
+snapshot.command('current').description('Show the current-approved snapshot').action(snapshotCurrentCommand);
 
 const config = program.command('config').description('View or change project settings');
 config.command('model [value]').description('Get or set the AI model').action(configModelCommand);
