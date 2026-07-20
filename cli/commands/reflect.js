@@ -25,18 +25,18 @@ export async function reflectCommand() {
   }
 
   console.log('Proposed reflected context:\n');
-  console.log(serializeToMd(updated, config.project));
+  console.log(serializeToMd(updated, config.project, '', contributions));
 
   const answer = await ask('Apply this reflection? (y/n)', 'y');
   if (answer.toLowerCase() !== 'y') { console.log('Reflection discarded.'); return; }
 
   writeShared(updated);
-  writeSharedMd(serializeToMd(updated, config.project, 'reflect'));
+  writeSharedMd(serializeToMd(updated, config.project, 'reflect', contributions));
 
   if (config.roles.length > 0) {
     console.log(`\n→ Regenerating ${config.roles.length} role files...`);
     for (const role of config.roles) {
-      const md = await generateRoleFile(updated, role, config.project, config);
+      const md = await generateRoleFile(updated, role, config.project, config, contributions);
       writeRoleFile(role.slug, md);
       process.stdout.write(`  ✓ ${role.slug}.md\n`);
     }

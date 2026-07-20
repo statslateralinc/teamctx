@@ -17,6 +17,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   items archived under `.teamctx/rejected/` with an optional reason.
   `teamctx config manager <name>` sets an identity gate (unset = solo mode).
   New `--apply` flag on `contribute` preserves the old immediate-apply behaviour.
+- Decisions as first-class objects: contributions now record a `source`
+  (`cli` or `web`), and nodes backed by a `--decision` contribution render
+  inline provenance markers (`*[decision — author, date, via source]*`) in
+  `shared.md`, in every compiled role file, and in `teamctx ask` answers.
 
 ### Changed
 - `teamctx contribute` no longer applies to shared context on submission by

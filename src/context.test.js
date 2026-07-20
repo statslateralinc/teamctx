@@ -40,6 +40,58 @@ describe('serializeToMd', () => {
     const md = serializeToMd(baseWs, 'Q3 Launch', 'cto');
     expect(md).toContain('cto');
   });
+
+  it('renders a decision marker on nodes backed by a decision contribution', () => {
+    const contributions = [
+      { id: 'c0', ts: '2026-06-20T10:00:00.000Z', author: 'alice', text: 'x', tagged: null, source: 'cli' },
+      { id: 'cD', ts: '2026-06-30T12:00:00.000Z', author: 'sam', text: 'chose postgres', tagged: 'decision', source: 'cli' },
+    ];
+    const ws = {
+      ...baseWs,
+      whys: [{
+        ...baseWs.whys[0],
+        whats: [{
+          ...baseWs.whys[0].whats[0],
+          sourceContributionIds: ['c0', 'cD'],
+        }],
+      }],
+    };
+    const md = serializeToMd(ws, 'Q3 Launch', '', contributions);
+    expect(md).toContain('*[decision — sam, 2026-06-30, via cli]*');
+    expect(md).not.toMatch(/Ship product by Q3.*\*\[decision/);
+  });
+
+  it('renders nothing extra when no decision contribution is linked', () => {
+    const contributions = [{ id: 'c0', ts: '2026-06-20T10:00:00.000Z', author: 'alice', tagged: null }];
+    const md = serializeToMd(baseWs, 'Q3 Launch', '', contributions);
+    expect(md).not.toContain('[decision');
+  });
+
+  it('picks the latest decision when a node has multiple decision-tagged sources', () => {
+    const contributions = [
+      { id: 'd1', ts: '2026-06-10T00:00:00.000Z', author: 'alice', tagged: 'decision', source: 'cli' },
+      { id: 'd2', ts: '2026-07-01T00:00:00.000Z', author: 'sam', tagged: 'decision', source: 'web' },
+    ];
+    const ws = {
+      ...baseWs,
+      whys: [{ ...baseWs.whys[0], sourceContributionIds: ['d1', 'd2'], whats: [] }],
+    };
+    const md = serializeToMd(ws, 'Q3 Launch', '', contributions);
+    expect(md).toContain('*[decision — sam, 2026-07-01, via web]*');
+    expect(md).not.toContain('alice');
+  });
+
+  it('defaults missing source to cli for backward compatibility', () => {
+    const contributions = [
+      { id: 'dold', ts: '2026-05-01T00:00:00.000Z', author: 'sam', tagged: 'decision' },
+    ];
+    const ws = {
+      ...baseWs,
+      whys: [{ ...baseWs.whys[0], sourceContributionIds: ['dold'], whats: [] }],
+    };
+    const md = serializeToMd(ws, 'Q3 Launch', '', contributions);
+    expect(md).toContain('via cli');
+  });
 });
 
 describe('updateShared', () => {

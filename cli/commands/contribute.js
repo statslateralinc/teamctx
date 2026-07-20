@@ -1,15 +1,16 @@
 import { ask } from '../prompt.js';
-import { readConfig, readShared, writeShared, writeSharedMd, appendContribution, writeRoleFile, writeQueueItem } from '../../src/storage.js';
+import { readConfig, readShared, writeShared, writeSharedMd, appendContribution, writeRoleFile, writeQueueItem, readContributions } from '../../src/storage.js';
 import { updateShared, generateRoleFile, serializeToMd } from '../../src/context.js';
 import { commitContext, pushContext } from '../../src/git.js';
 
-function newContribution(text, author, tagged) {
+function newContribution(text, author, tagged, source) {
   return {
     id: `c-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
     ts: new Date().toISOString(),
     author,
     text,
     tagged: tagged || null,
+    source: source || 'cli',
     status: 'logged',
   };
 }
@@ -18,7 +19,7 @@ export async function contributeCommand(text, opts) {
   const config = readConfig();
   const workstream = readShared();
   const tagged = opts.decision ? 'decision' : null;
-  const contribution = newContribution(text, config.me, tagged);
+  const contribution = newContribution(text, config.me, tagged, opts.source);
 
   appendContribution(contribution);
   console.log(`\n→ Processing contribution from ${config.me}...`);
@@ -77,12 +78,13 @@ export async function contributeCommand(text, opts) {
   }
 
   writeShared(updated);
-  writeSharedMd(serializeToMd(updated, config.project, config.me));
+  const contributions = readContributions();
+  writeSharedMd(serializeToMd(updated, config.project, config.me, contributions));
 
   if (config.roles.length > 0) {
     console.log(`\n→ Regenerating ${config.roles.length} role file${config.roles.length !== 1 ? 's' : ''}...`);
     for (const role of config.roles) {
-      const md = await generateRoleFile(updated, role, config.project, config);
+      const md = await generateRoleFile(updated, role, config.project, config, contributions);
       writeRoleFile(role.slug, md);
       process.stdout.write(`  ✓ ${role.slug}.md\n`);
     }

@@ -1,7 +1,23 @@
 import { proposeDiff, callClaude } from './ai.js';
 import { applyOps } from './ops.js';
 
-export function serializeToMd(workstream, projectName, lastUpdatedBy = '') {
+function decisionMarker(node, contributionsById) {
+  const ids = node.sourceContributionIds || [];
+  let latest = null;
+  for (const id of ids) {
+    const c = contributionsById.get(id);
+    if (c && c.tagged === 'decision') {
+      if (!latest || (c.ts || '') > (latest.ts || '')) latest = c;
+    }
+  }
+  if (!latest) return '';
+  const date = (latest.ts || '').split('T')[0] || 'unknown';
+  const author = latest.author || 'unknown';
+  const source = latest.source || 'cli';
+  return `  *[decision — ${author}, ${date}, via ${source}]*`;
+}
+
+export function serializeToMd(workstream, projectName, lastUpdatedBy = '', contributions = []) {
   const now = new Date().toISOString().split('T')[0];
   const byLine = lastUpdatedBy ? ` · Source: ${lastUpdatedBy} contribution` : '';
   const header = `# Project Context — ${projectName}\n*Last updated: ${now}${byLine}*\n\n## Why / What / How\n\n`;
@@ -10,11 +26,15 @@ export function serializeToMd(workstream, projectName, lastUpdatedBy = '') {
     return header + '*No context yet. Run `teamctx contribute` to add the first contribution.*\n';
   }
 
+  const contributionsById = new Map(contributions.map(c => [c.id, c]));
+
   const tree = workstream.whys.map(why => {
-    let out = `- **Why:** ${why.text}\n`;
+    let out = `- **Why:** ${why.text}${decisionMarker(why, contributionsById)}\n`;
     (why.whats || []).forEach(what => {
-      out += `  - **What:** ${what.text}\n`;
-      (what.hows || []).forEach(how => { out += `    - **How:** ${how.text}\n`; });
+      out += `  - **What:** ${what.text}${decisionMarker(what, contributionsById)}\n`;
+      (what.hows || []).forEach(how => {
+        out += `    - **How:** ${how.text}${decisionMarker(how, contributionsById)}\n`;
+      });
     });
     return out;
   }).join('');
@@ -33,8 +53,8 @@ export async function updateShared(workstream, contribution, config) {
   return { workstream: updated, summary, operations };
 }
 
-export async function generateRoleFile(workstream, role, projectName, config) {
-  const tree = serializeToMd(workstream, projectName);
+export async function generateRoleFile(workstream, role, projectName, config, contributions = []) {
+  const tree = serializeToMd(workstream, projectName, '', contributions);
   const now = new Date().toISOString().split('T')[0];
 
   const prompt = [
@@ -58,6 +78,7 @@ export async function generateRoleFile(workstream, role, projectName, config) {
     ``,
     `## Your Why / What / How`,
     `[filter and reframe the project tree for this role — same facts, different perspective]`,
+    `[IMPORTANT: preserve any inline "*[decision — author, date, via source]*" markers verbatim on the same line as the statement they annotate. They mark human decisions and must survive the rewrite.]`,
     ``,
     `## Open Decisions (Yours to Make)`,
     `[items where this role is the decision owner — write "None currently." if none]`,
@@ -73,7 +94,7 @@ export async function generateRoleFile(workstream, role, projectName, config) {
 }
 
 export async function generateReflection(workstream, contributions, config) {
-  const tree = serializeToMd(workstream, workstream.name);
+  const tree = serializeToMd(workstream, workstream.name, '', contributions);
   const recent = contributions.slice(-20).map(c => `- ${c.author}: "${c.text}"`).join('\n') || '(none yet)';
   const system = 'You are improving a team context record. Output STRICT JSON only — no markdown fences.';
 
@@ -102,7 +123,11 @@ export async function answerQuestion({ sharedMd, roleMd, question, config }) {
     sharedMd ? `## Shared Project Context\n\n${sharedMd}` : '',
   ].filter(Boolean).join('\n\n---\n\n');
 
-  const system = 'You are a helpful assistant with access to the team\'s project context. Answer questions based on the context provided. Be concise and specific.';
+  const system = [
+    'You are a helpful assistant with access to the team\'s project context.',
+    'Answer questions based on the context provided. Be concise and specific.',
+    'When the context shows an inline "*[decision — author, date, via source]*" marker on a statement, treat that statement as a canonical human decision. If your answer relies on it, cite it inline like "(decision — author, date)". If the context contains conflicting statements and one is a decision, prefer the decision.',
+  ].join(' ');
   const prompt = `Context:\n\n${context}\n\n---\n\nQuestion: ${question}`;
 
   return callClaude({ prompt, model: config.model, system });
