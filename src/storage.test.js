@@ -2,12 +2,15 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { mkdtempSync, rmSync, mkdirSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
+import { readFileSync, existsSync } from 'fs';
 import {
   readConfig, writeConfig,
   readShared, writeShared,
   appendContribution, readContributions,
   writeRoleFile, readRoleFile,
   writeSharedMd, readSharedMd,
+  writeQueueItem, readQueueItem, listQueue, deleteQueueItem,
+  writeRejected,
 } from './storage.js';
 
 let dir;
@@ -82,5 +85,56 @@ describe('shared.md', () => {
 
   it('returns empty string when shared.md does not exist', () => {
     expect(readSharedMd(dir)).toBe('');
+  });
+});
+
+describe('review queue', () => {
+  const mk = (id, createdAt, extras = {}) => ({
+    id, status: 'pending', createdAt, author: 'alice', source: 'cli',
+    text: 'raw', tagged: null, summary: 's', operations: [], ...extras,
+  });
+
+  it('writes and reads a queue item round-trip', () => {
+    const q = mk('q-1', '2026-07-13T14:00:00.000Z');
+    writeQueueItem(q, dir);
+    expect(readQueueItem('q-1', dir)).toEqual(q);
+  });
+
+  it('listQueue returns [] when queue/ does not exist', () => {
+    expect(listQueue(dir)).toEqual([]);
+  });
+
+  it('listQueue returns items sorted by createdAt ascending', () => {
+    writeQueueItem(mk('q-a', '2026-07-13T15:00:00.000Z'), dir);
+    writeQueueItem(mk('q-b', '2026-07-13T14:00:00.000Z'), dir);
+    writeQueueItem(mk('q-c', '2026-07-13T16:00:00.000Z'), dir);
+    expect(listQueue(dir).map(p => p.id)).toEqual(['q-b', 'q-a', 'q-c']);
+  });
+
+  it('deleteQueueItem removes the file', () => {
+    writeQueueItem(mk('q-x', '2026-07-13T14:00:00.000Z'), dir);
+    deleteQueueItem('q-x', dir);
+    expect(() => readQueueItem('q-x', dir)).toThrow();
+    expect(listQueue(dir)).toEqual([]);
+  });
+
+  it('writeRejected persists item to rejected/', () => {
+    const item = { ...mk('q-r', '2026-07-13T14:00:00.000Z'), status: 'rejected', reason: 'off-topic' };
+    writeRejected(item, dir);
+    const p = join(dir, 'rejected', 'q-r.json');
+    expect(existsSync(p)).toBe(true);
+    expect(JSON.parse(readFileSync(p, 'utf-8'))).toEqual(item);
+  });
+
+  it('rejects queue ids with path-traversal characters', () => {
+    expect(() => readQueueItem('../important-secret', dir)).toThrow(/invalid queue id/i);
+    expect(() => deleteQueueItem('../important-secret', dir)).toThrow(/invalid queue id/i);
+    expect(() => writeQueueItem(mk('../evil', '2026-07-13T14:00:00.000Z'), dir)).toThrow(/invalid queue id/i);
+  });
+
+  it('rejects queue ids with slashes, dots, or empty string', () => {
+    expect(() => readQueueItem('foo/bar', dir)).toThrow(/invalid queue id/i);
+    expect(() => readQueueItem('.', dir)).toThrow(/invalid queue id/i);
+    expect(() => readQueueItem('', dir)).toThrow(/invalid queue id/i);
   });
 });
