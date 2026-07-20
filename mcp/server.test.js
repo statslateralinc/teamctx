@@ -10,6 +10,7 @@ vi.mock('../src/storage.js', () => ({
   readRoleFile: vi.fn(),
   writeRoleFile: vi.fn(),
   appendContribution: vi.fn(),
+  readContributions: vi.fn(() => []),
 }));
 
 vi.mock('../src/context.js', () => ({

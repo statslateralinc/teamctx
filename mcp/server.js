@@ -9,7 +9,7 @@ import {
   readConfig, readShared, writeShared,
   readSharedMd, writeSharedMd,
   readRoleFile, writeRoleFile,
-  appendContribution,
+  appendContribution, readContributions,
 } from '../src/storage.js';
 import { updateShared, generateRoleFile, serializeToMd, answerQuestion } from '../src/context.js';
 import { commitContext, pushContext } from '../src/git.js';
@@ -122,10 +122,11 @@ export function makeHandlers(projectRoot) {
       }
 
       writeShared(updated, teamctxDir);
-      writeSharedMd(serializeToMd(updated, config.project, contribution.author), teamctxDir);
+      const contributions = readContributions(teamctxDir);
+      writeSharedMd(serializeToMd(updated, config.project, contribution.author, contributions), teamctxDir);
 
       for (const role of config.roles || []) {
-        const md = await generateRoleFile(updated, role, config.project, config);
+        const md = await generateRoleFile(updated, role, config.project, config, contributions);
         writeRoleFile(role.slug, md, teamctxDir);
       }
 
