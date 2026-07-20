@@ -125,4 +125,16 @@ describe('review queue', () => {
     expect(existsSync(p)).toBe(true);
     expect(JSON.parse(readFileSync(p, 'utf-8'))).toEqual(item);
   });
+
+  it('rejects queue ids with path-traversal characters', () => {
+    expect(() => readQueueItem('../important-secret', dir)).toThrow(/invalid queue id/i);
+    expect(() => deleteQueueItem('../important-secret', dir)).toThrow(/invalid queue id/i);
+    expect(() => writeQueueItem(mk('../evil', '2026-07-13T14:00:00.000Z'), dir)).toThrow(/invalid queue id/i);
+  });
+
+  it('rejects queue ids with slashes, dots, or empty string', () => {
+    expect(() => readQueueItem('foo/bar', dir)).toThrow(/invalid queue id/i);
+    expect(() => readQueueItem('.', dir)).toThrow(/invalid queue id/i);
+    expect(() => readQueueItem('', dir)).toThrow(/invalid queue id/i);
+  });
 });

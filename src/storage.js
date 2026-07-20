@@ -51,6 +51,12 @@ function sanitizeSlug(slug) {
   }
 }
 
+function sanitizeQueueId(id) {
+  if (typeof id !== 'string' || !/^[a-zA-Z0-9_-]+$/.test(id)) {
+    throw new Error(`Invalid queue id: "${id}"`);
+  }
+}
+
 export function writeRoleFile(slug, content, dir) {
   sanitizeSlug(slug);
   const rolesDir = resolve(dir, 'context', 'roles');
@@ -80,12 +86,14 @@ export function queueDir(dir) {
 }
 
 export function writeQueueItem(item, dir) {
+  sanitizeQueueId(item?.id);
   const d = queueDir(dir);
   mkdirSync(d, { recursive: true });
   writeFileSync(join(d, `${item.id}.json`), JSON.stringify(item, null, 2));
 }
 
 export function readQueueItem(id, dir) {
+  sanitizeQueueId(id);
   return JSON.parse(readFileSync(join(queueDir(dir), `${id}.json`), 'utf-8'));
 }
 
@@ -99,6 +107,7 @@ export function listQueue(dir) {
 }
 
 export function deleteQueueItem(id, dir) {
+  sanitizeQueueId(id);
   unlinkSync(join(queueDir(dir), `${id}.json`));
 }
 
