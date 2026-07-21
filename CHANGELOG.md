@@ -48,10 +48,38 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `.teamctx/workstreams/main.json` (and `context/shared.md` →
   `context/workstreams/main.md`) on first run against an existing project.
 
+### Fixed
+- **Queue + workstream:** `contribute --workstream <id>` now persists the target
+  workstream on the queue item (and on the contribution audit log). Previously
+  the target was silently lost between enqueue and approve.
+- **Review approve + workstream:** `review approve <id>` now applies operations
+  to the queue item's target workstream (defaulting to `main` for legacy queue
+  items), regenerates only the role files bound to that workstream, and threads
+  contributions into `serializeToMd` / `generateRoleFile` so decision markers
+  render on approved contributions. Previously it always wrote to `main` and
+  overwrote every role file — corrupting role files bound to other workstreams.
+- **Snapshots + workstream:** `snapshot create` now captures every workstream
+  in the project as an array on the snapshot object. Legacy snapshots with the
+  old `shared` field still load and display as a single-workstream snapshot on
+  `main`. Previously only `main` was captured — post-split projects produced
+  empty snapshots.
+- **MCP + workstream:** `submit_contribution` gained an optional `workstream`
+  arg (defaulting to active workstream, then `main`); it now filters role-file
+  regeneration to roles bound to the target and records `workstream` +
+  `source: mcp` on the audit log. Two new read-only tools added for discovery:
+  `list_workstreams` and `get_workstream({id})`. `teamctx status` now shows a
+  per-workstream Why-node breakdown after migration and the active provider.
+
 ### Changed
 - `teamctx contribute` no longer applies to shared context on submission by
   default — it enqueues under `.teamctx/queue/` and prints the review command.
   Pass `--apply` to keep the old behaviour.
+- **MCP `get_context` response shape** is now `{workstreams: [{id, tree}, ...]}`
+  (whole-workspace) instead of a single tree. This is an intentional breaking
+  change for MCP callers — keeping the main-only response would silently
+  mislead callers in workstream-migrated projects. Adapt: read
+  `data.workstreams[0].tree.whys` instead of `data.whys`, or call
+  `get_workstream({id: 'main'})` for the single-tree shape.
 
 ## [0.1.0] - 2026-06-14
 
