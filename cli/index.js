@@ -2,6 +2,9 @@
 import dotenv from 'dotenv';
 dotenv.config({ path: '.env.local' });
 dotenv.config();
+import { readFileSync } from 'fs';
+import { fileURLToPath } from 'url';
+import { dirname, join } from 'path';
 import { program } from 'commander';
 import { initCommand } from './commands/init.js';
 import { roleCommand, roleAssignCommand } from './commands/role.js';
@@ -23,7 +26,10 @@ import { workstreamSuggestCommand, workstreamListCommand, workstreamUseCommand, 
 import { getTeamctxDir } from '../src/storage.js';
 import { migrateIfNeeded } from '../src/migrate.js';
 
-program.name('teamctx').description('AI-native version control for team context').version('0.1.0');
+const __dirname = dirname(fileURLToPath(import.meta.url));
+const pkg = JSON.parse(readFileSync(join(__dirname, '../package.json'), 'utf-8'));
+
+program.name('teamctx').description('AI-native version control for team context').version(pkg.version);
 
 program.hook('preAction', (thisCommand, actionCommand) => {
   const name = actionCommand.name();
