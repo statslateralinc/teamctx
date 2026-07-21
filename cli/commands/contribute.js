@@ -3,7 +3,7 @@ import { readConfig, readWorkstream, writeWorkstream, writeWorkstreamMd, appendC
 import { updateShared, generateRoleFile, serializeToMd } from '../../src/context.js';
 import { commitContext, pushContext } from '../../src/git.js';
 
-function newContribution(text, author, tagged, source) {
+function newContribution(text, author, tagged, source, workstream) {
   return {
     id: `c-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
     ts: new Date().toISOString(),
@@ -11,6 +11,7 @@ function newContribution(text, author, tagged, source) {
     text,
     tagged: tagged || null,
     source: source || 'cli',
+    workstream: workstream || 'main',
     status: 'logged',
   };
 }
@@ -29,7 +30,7 @@ export async function contributeCommand(text, opts) {
   }
   const workstream = readWorkstream(targetId);
   const tagged = opts.decision ? 'decision' : null;
-  const contribution = newContribution(text, config.me, tagged, opts.source);
+  const contribution = newContribution(text, config.me, tagged, opts.source, targetId);
 
   appendContribution(contribution);
   const wsLabel = targetId === 'main' ? '' : ` [workstream: ${targetId}]`;
@@ -66,6 +67,7 @@ export async function contributeCommand(text, opts) {
       createdAt: contribution.ts,
       author: contribution.author,
       source: 'cli',
+      workstream: targetId,
       text: contribution.text,
       tagged: contribution.tagged,
       summary,
