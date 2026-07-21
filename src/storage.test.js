@@ -13,6 +13,8 @@ import {
   writeRejected,
   writeSnapshot, readSnapshot, listSnapshots, resolveSnapshotId,
   readCurrentSnapshotPointer, writeCurrentSnapshotPointer,
+  readWorkstream, writeWorkstream, listWorkstreamIds,
+  readWorkstreamMd, writeWorkstreamMd,
 } from './storage.js';
 
 let dir;
@@ -69,6 +71,44 @@ describe('role files', () => {
   it('throws on invalid slug with path traversal characters', () => {
     expect(() => writeRoleFile('../../config', '# bad', dir)).toThrow(/invalid role slug/i);
     expect(() => readRoleFile('../../config', dir)).toThrow(/invalid role slug/i);
+  });
+});
+
+describe('workstream files', () => {
+  it('returns an empty workstream when the file does not exist', () => {
+    expect(readWorkstream('main', dir)).toEqual({ id: 'main', name: '', whys: [] });
+  });
+
+  it('writes and reads a workstream round-trip under workstreams/<id>.json', () => {
+    const ws = { id: 'product', name: 'Product', whys: [{ id: 'w1', text: 'launch', whats: [] }] };
+    writeWorkstream('product', ws, dir);
+    expect(readWorkstream('product', dir)).toEqual(ws);
+  });
+
+  it('lists workstream ids sorted', () => {
+    writeWorkstream('main', { id: 'main', name: 'M', whys: [] }, dir);
+    writeWorkstream('product', { id: 'product', name: 'P', whys: [] }, dir);
+    writeWorkstream('tech', { id: 'tech', name: 'T', whys: [] }, dir);
+    expect(listWorkstreamIds(dir)).toEqual(['main', 'product', 'tech']);
+  });
+
+  it('returns [] when workstreams/ does not exist', () => {
+    expect(listWorkstreamIds(dir)).toEqual([]);
+  });
+
+  it('rejects ids with path traversal or invalid characters', () => {
+    expect(() => writeWorkstream('../evil', { id: 'x', name: '', whys: [] }, dir)).toThrow(/invalid workstream id/i);
+    expect(() => readWorkstream('../evil', dir)).toThrow(/invalid workstream id/i);
+    expect(() => writeWorkstreamMd('a b', 'x', dir)).toThrow(/invalid workstream id/i);
+  });
+
+  it('writes and reads a workstream markdown under context/workstreams/<id>.md', () => {
+    writeWorkstreamMd('product', '# Product\n', dir);
+    expect(readWorkstreamMd('product', dir)).toBe('# Product\n');
+  });
+
+  it('returns empty string when workstream md does not exist', () => {
+    expect(readWorkstreamMd('main', dir)).toBe('');
   });
 });
 

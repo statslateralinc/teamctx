@@ -77,8 +77,14 @@ teamctx contribute "We decided to use AWS (Why). API migration starts next sprin
 | `teamctx config model <id>` | Pick a model from the selected provider's list |
 | `teamctx status` | Project summary |
 | `teamctx mcp` | Start an MCP server over stdio so AI clients can call teamctx tools |
+| `teamctx workstream suggest` | AI proposes how to split the active workstream |
+| `teamctx workstream split` | Interactively accept AI-proposed splits |
+| `teamctx workstream list` | List all workstreams and their assigned roles |
+| `teamctx workstream use <id>` | Set the active workstream |
+| `teamctx role assign <slug> --workstream <id>` | Move a role to a workstream |
 
 See [docs/providers.md](docs/providers.md) for the full provider guide.
+See [docs/workstreams.md](docs/workstreams.md) for the full sub-workstreams guide.
 
 ---
 

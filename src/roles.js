@@ -15,6 +15,7 @@ export function addRole(roleData, config) {
     responsibilities: roleData.responsibilities,
     excludes: roleData.excludes || '',
     email: roleData.email || '',
+    workstream: roleData.workstream || 'main',
     createdAt: new Date().toISOString(),
   };
   return { slug, config: { ...config, roles: [...config.roles, role] } };

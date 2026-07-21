@@ -3,7 +3,7 @@ import { join } from 'path';
 import { ask, askChoice } from '../prompt.js';
 import { checkGitRepo, commitContext, pushContext } from '../../src/git.js';
 import { getModelsFor, getDefaultModelFor } from '../../src/ai.js';
-import { writeConfig, writeShared, writeSharedMd } from '../../src/storage.js';
+import { writeConfig, writeWorkstream, writeWorkstreamMd } from '../../src/storage.js';
 import { serializeToMd } from '../../src/context.js';
 
 function unignoreTeamctx() {
@@ -62,12 +62,20 @@ export async function initCommand() {
 
   mkdirSync(join(teamctxDir, 'context', 'roles'), { recursive: true });
 
-  const config = { project, me, provider: providerId, model, autoPush, deployUrl: deployUrl || '', githubRawBase: githubRawBase || '', managerEmail: managerEmail || '', roles: [] };
+  const createdAt = new Date().toISOString();
+  const config = {
+    project, me, provider: providerId, model, autoPush,
+    deployUrl: deployUrl || '', githubRawBase: githubRawBase || '', managerEmail: managerEmail || '',
+    roles: [],
+    workstreams: [{ id: 'main', name: project, createdAt }],
+    activeWorkstream: 'main',
+    workstreamsMigrated: true,
+  };
   writeConfig(config, teamctxDir);
 
   const workstream = { id: 'main', name: project, whys: [] };
-  writeShared(workstream, teamctxDir);
-  writeSharedMd(serializeToMd(workstream, project), teamctxDir);
+  writeWorkstream('main', workstream, teamctxDir);
+  writeWorkstreamMd('main', serializeToMd(workstream, project), teamctxDir);
   writeFileSync(join(teamctxDir, 'contributions.jsonl'), '');
 
   await commitContext(`chore: initialize teamctx for "${project}"`);

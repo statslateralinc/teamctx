@@ -1,5 +1,5 @@
 import { ask, askChoice } from '../prompt.js';
-import { readConfig, writeConfig, readShared, writeRoleFile, readContributions } from '../../src/storage.js';
+import { readConfig, writeConfig, readShared, readWorkstream, listWorkstreamIds, writeRoleFile, readContributions } from '../../src/storage.js';
 import { addRole, suggestRoles, slugify } from '../../src/roles.js';
 import { generateRoleFile } from '../../src/context.js';
 import { commitContext, pushContext } from '../../src/git.js';
@@ -22,8 +22,49 @@ async function suggestRoleDetails(name, workstream, config) {
 
 export async function roleCommand(subcommand, opts) {
   if (subcommand === 'list') return listRoles();
-  if (subcommand === 'add' && opts.suggest) return suggestAndAdd();
-  return addRoleInteractive();
+  if (subcommand === 'add' && opts.suggest) return suggestAndAdd(opts);
+  if (subcommand === 'add') return addRoleInteractive({}, opts);
+  return addRoleInteractive({}, opts);
+}
+
+export async function roleAssignCommand(slug, opts) {
+  const config = readConfig();
+  const role = (config.roles || []).find(r => r.slug === slug);
+  if (!role) {
+    console.error(`Error: no role "${slug}". Run \`teamctx role list\` to see options.`);
+    process.exit(1);
+  }
+  const targetId = opts.workstream;
+  if (!targetId) {
+    console.error('Error: --workstream <id> is required.');
+    process.exit(1);
+  }
+  const known = new Set([...(config.workstreams || []).map(w => w.id), ...listWorkstreamIds()]);
+  if (!known.has(targetId)) {
+    console.error(`Error: no workstream "${targetId}". Run \`teamctx workstream list\`.`);
+    process.exit(1);
+  }
+  if ((role.workstream || 'main') === targetId) {
+    console.log(`Role "${slug}" is already on workstream "${targetId}".`);
+    return;
+  }
+
+  const updatedConfig = {
+    ...config,
+    roles: config.roles.map(r => r.slug === slug ? { ...r, workstream: targetId } : r),
+  };
+  writeConfig(updatedConfig);
+
+  const workstream = readWorkstream(targetId);
+  const contributions = readContributions();
+  const md = await generateRoleFile(workstream, updatedConfig.roles.find(r => r.slug === slug), updatedConfig.project, updatedConfig, contributions);
+  writeRoleFile(slug, md);
+
+  await commitContext(`role: assign "${slug}" to workstream ${targetId}`);
+  if (updatedConfig.autoPush) {
+    try { await pushContext(); } catch { /* non-fatal */ }
+  }
+  console.log(`✓ Role "${slug}" is now on workstream "${targetId}".`);
 }
 
 async function listRoles() {
@@ -40,8 +81,14 @@ async function listRoles() {
   });
 }
 
-async function addRoleInteractive(prefill = {}) {
+async function addRoleInteractive(prefill = {}, opts = {}) {
   const config = readConfig();
+  const workstreamId = opts.workstream || config.activeWorkstream || 'main';
+  const known = new Set([...(config.workstreams || []).map(w => w.id), ...listWorkstreamIds()]);
+  if (config.workstreams && !known.has(workstreamId)) {
+    console.error(`Error: no workstream "${workstreamId}". Run \`teamctx workstream list\`.`);
+    process.exit(1);
+  }
   console.log('\nDefining a new role. Press Enter to skip optional fields.\n');
 
   const name = prefill.name || await ask('Role title (e.g. "Chief Product Officer")');
@@ -80,7 +127,7 @@ async function addRoleInteractive(prefill = {}) {
 
   let slug, updatedConfig;
   try {
-    const result = addRole({ name, responsibilities, excludes, email: email || undefined }, config);
+    const result = addRole({ name, responsibilities, excludes, email: email || undefined, workstream: workstreamId }, config);
     slug = result.slug;
     updatedConfig = result.config;
   } catch (err) {
@@ -90,8 +137,8 @@ async function addRoleInteractive(prefill = {}) {
 
   writeConfig(updatedConfig);
 
-  console.log(`\n→ Generating context file for ${name}...`);
-  const workstream = readShared();
+  console.log(`\n→ Generating context file for ${name} from workstream "${workstreamId}"...`);
+  const workstream = readWorkstream(workstreamId);
   const contributions = readContributions();
   const roleData = updatedConfig.roles.find(r => r.slug === slug);
   const md = await generateRoleFile(workstream, roleData, config.project, config, contributions);
@@ -108,11 +155,12 @@ async function addRoleInteractive(prefill = {}) {
   console.log(`  Share this — team member opens URL, copies MD, pastes into ChatGPT / Claude.\n`);
 }
 
-async function suggestAndAdd() {
+async function suggestAndAdd(opts = {}) {
   const config = readConfig();
-  const workstream = readShared();
+  const workstreamId = opts.workstream || config.activeWorkstream || 'main';
+  const workstream = readWorkstream(workstreamId);
 
-  console.log('\n→ Analyzing project context to suggest roles...\n');
+  console.log(`\n→ Analyzing workstream "${workstreamId}" to suggest roles...\n`);
   const suggestions = await suggestRoles(workstream, config);
 
   if (!suggestions.length) {
@@ -129,5 +177,5 @@ async function suggestAndAdd() {
 
   const idx = await askChoice('Add which role? (0 to cancel)', ['Cancel', ...suggestions.map(r => r.name)], 0);
   if (idx === 0) { console.log('Cancelled.'); return; }
-  await addRoleInteractive(suggestions[idx - 1]);
+  await addRoleInteractive(suggestions[idx - 1], opts);
 }
