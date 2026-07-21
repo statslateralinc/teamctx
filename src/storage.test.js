@@ -142,6 +142,12 @@ describe('review queue', () => {
     expect(readQueueItem('q-1', dir)).toEqual(q);
   });
 
+  it('preserves the workstream field on a queue item round-trip', () => {
+    const q = mk('q-ws', '2026-07-13T14:00:00.000Z', { workstream: 'growth' });
+    writeQueueItem(q, dir);
+    expect(readQueueItem('q-ws', dir).workstream).toBe('growth');
+  });
+
   it('listQueue returns [] when queue/ does not exist', () => {
     expect(listQueue(dir)).toEqual([]);
   });
