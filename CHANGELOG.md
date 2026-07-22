@@ -7,6 +7,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **MCP full-surface**: the MCP server now exposes every mutating CLI command
+  as a tool, so managers can drive teamctx from Claude Desktop / Code / Cursor
+  with no terminal after the initial install + API key. New tools include
+  `init`, `role_add`, `role_assign`, `workstream_split`, `workstream_use`,
+  `review_approve`, `review_reject`, `snapshot_create`, `snapshot_approve`,
+  `snapshot_reject`, `reflect`, `config_set`, plus read-only helpers
+  `list_roles`, `list_snapshots`, `get_snapshot`, `get_current_snapshot`,
+  `list_pending_reviews`, `get_status`, `get_config`, `suggest_roles`,
+  `suggest_workstream_splits`.
+- **Safety model** for MCP mutations: `⚠ RISKY:` preamble on every Tier 2
+  tool description (so the client model warns the user before calling),
+  manager-identity gate at the MCP boundary (`author` param must match
+  `config.manager` when set), and a `reportBack` string on every mutating
+  response the client is expected to relay to the user after the call.
+- **Refactor**: every mutating CLI command extracted into a `.core.js` pure
+  function that MCP and the CLI both call — same behavior, one code path.
+- **Manager guide** `docs/mcp-manager-guide.md` — zero-terminal walkthrough
+  with copy-paste prompts for the common flows (init, add role, contribute,
+  review, snapshot, split).
+
+### Changed
+- **MCP `contribute` supersedes `submit_contribution`**: the new `contribute`
+  tool accepts `apply` (default false = enqueue, true = write immediately),
+  `decision`, and `workstream`. `submit_contribution` is kept as a deprecated
+  alias with `apply: true` (matching the old immediate-apply behavior) and
+  will be removed in a future release.
+- **`get_context` response shape** stays as `{workstreams: [{id, tree}, ...]}`
+  from the previous release; documented in
+  [docs/mcp.md](docs/mcp.md#breaking-change--get_context-response-shape).
+
 ## [0.2.0] - 2026-07-21
 
 ### Added

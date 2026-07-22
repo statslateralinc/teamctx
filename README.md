@@ -96,8 +96,19 @@ write new contributions as native tools — no more copy-pasting between a
 terminal and your AI.
 
 The client uses whatever chat model you already run there; teamctx uses its
-own Anthropic API key for the four tools it exposes (`get_context`,
-`get_role_context`, `ask`, `submit_contribution`).
+own API key for the tools it exposes. The MCP surface covers the full CLI:
+reads (`get_context`, `get_role_context`, `list_workstreams`,
+`get_workstream`, `list_roles`, `list_snapshots`, `get_status`, `get_config`,
+`list_pending_reviews`, `suggest_roles`, `suggest_workstream_splits`, `ask`);
+writes (`contribute` with optional immediate-apply); and manager operations
+gated by identity (`init`, `role_add`, `role_assign`, `workstream_split`,
+`workstream_use`, `review_approve`, `review_reject`, `snapshot_create`,
+`snapshot_approve`, `snapshot_reject`, `reflect`, `config_set`).
+
+**Manager-focused walkthrough:** if you want to run teamctx entirely from
+your AI client without touching a terminal, see
+[docs/mcp-manager-guide.md](docs/mcp-manager-guide.md). Full technical
+reference for every tool: [docs/mcp.md](docs/mcp.md).
 
 ### Prerequisites
 
