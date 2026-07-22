@@ -1,5 +1,5 @@
 import { ask } from '../prompt.js';
-import { readConfig, readWorkstream, writeWorkstream, writeWorkstreamMd, appendContribution, writeRoleFile, writeQueueItem, readContributions } from '../../src/storage.js';
+import { readConfig, readWorkstream, writeWorkstream, writeWorkstreamMd, appendContribution, writeRoleFile, writeQueueItem, readContributions, listWorkstreamIds } from '../../src/storage.js';
 import { updateShared, generateRoleFile, serializeToMd } from '../../src/context.js';
 import { commitContext, pushContext } from '../../src/git.js';
 
@@ -23,7 +23,10 @@ function workstreamDisplayName(id, workstream, config) {
 export async function contributeCommand(text, opts) {
   const config = readConfig();
   const targetId = opts.workstream || config.activeWorkstream || 'main';
-  const known = new Set((config.workstreams || []).map(w => w.id));
+  const known = new Set([
+    ...(config.workstreams || []).map(w => w.id),
+    ...listWorkstreamIds(),
+  ]);
   if (config.workstreams && !known.has(targetId)) {
     console.error(`Error: no workstream "${targetId}". Run \`teamctx workstream list\`.`);
     process.exit(1);

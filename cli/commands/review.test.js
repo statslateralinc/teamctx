@@ -57,7 +57,7 @@ describe('reviewApproveCommand — workstream-aware', () => {
 
     await reviewApproveCommand('c-1');
 
-    expect(readWorkstream).toHaveBeenCalledWith('tech');
+    expect(readWorkstream.mock.calls[0][0]).toBe('tech');
     const [wsIdArg, wsObjArg] = writeWorkstream.mock.calls[0];
     expect(wsIdArg).toBe('tech');
     expect(wsObjArg.whys).toHaveLength(1);
@@ -106,7 +106,7 @@ describe('reviewApproveCommand — workstream-aware', () => {
 
     await reviewApproveCommand('c-legacy');
 
-    expect(readWorkstream).toHaveBeenCalledWith('main');
+    expect(readWorkstream.mock.calls[0][0]).toBe('main');
     expect(writeWorkstream.mock.calls[0][0]).toBe('main');
   });
 
@@ -120,7 +120,7 @@ describe('reviewApproveCommand — workstream-aware', () => {
 
     await reviewApproveCommand('c-4');
 
-    expect(deleteQueueItem).toHaveBeenCalledWith('c-4');
+    expect(deleteQueueItem.mock.calls[0][0]).toBe('c-4');
     const commitMsg = commitContext.mock.calls[0][0];
     expect(commitMsg).toContain('[decision]');
     expect(commitMsg).toContain('(tech)');
