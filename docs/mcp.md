@@ -11,10 +11,28 @@ For end-user setup, see the "Use teamctx from your AI tool (MCP)" section in the
 
 | Tool | Purpose |
 | --- | --- |
-| `get_context` | Return the full Why/What/How tree as JSON. |
+| `get_context` | Return every workstream's tree as `{workstreams: [{id, tree}, ...]}`. |
+| `list_workstreams` | Return the workstreams configured for the project (id + name). |
+| `get_workstream({id})` | Return a single workstream tree by id. |
 | `get_role_context` | Return a role's compiled markdown by slug. |
 | `ask` | Answer a question using shared context (and optionally a role's perspective). |
-| `submit_contribution` | Add a contribution; AI updates the tree, regenerates role files, commits. |
+| `submit_contribution` | Add a contribution to a workstream (defaults to active/main); AI updates that workstream's tree, regenerates the role files bound to it, commits. Accepts optional `workstream` and `author` overrides. |
+
+### Breaking change — `get_context` response shape
+
+Since the workstream-integration release, `get_context` returns
+`{workstreams: [{id, tree}, ...]}` instead of a single tree. For projects that
+have never been split into sub-workstreams, this is an array of one
+(`workstreams[0].tree` holds what used to be the top-level object).
+
+Callers that used to read `response.whys` should now read
+`response.workstreams[0].tree.whys`, or call `get_workstream({id: 'main'})` for
+the previous single-tree shape.
+
+Rationale: keeping `get_context` main-only would silently lie in projects that
+have run `teamctx workstream split` — the whole reason the workstream feature
+exists is that a single main tree can't represent all the threads. Better a
+visible break during pre-1.0 than silent data loss for callers.
 
 ## Project-dir resolution
 

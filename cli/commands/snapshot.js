@@ -1,9 +1,9 @@
 import {
-  readConfig, readShared,
+  readConfig, readWorkstream, listWorkstreamIds,
   writeSnapshot, readSnapshot, listSnapshots, resolveSnapshotId,
   readCurrentSnapshotPointer, writeCurrentSnapshotPointer,
 } from '../../src/storage.js';
-import { buildSnapshot, buildApproved, buildRejected, buildPointer } from '../../src/snapshots.js';
+import { buildSnapshot, buildApproved, buildRejected, buildPointer, snapshotWorkstreams } from '../../src/snapshots.js';
 import { canApprove } from '../../src/review.js';
 import { serializeToMd } from '../../src/context.js';
 import { commitContext, pushContext } from '../../src/git.js';
@@ -34,10 +34,19 @@ async function commitAndPush(config, msg, successLine) {
   }
 }
 
+function collectWorkstreams(config) {
+  const idSet = new Set([
+    ...(config.workstreams || []).map(w => w.id),
+    ...listWorkstreamIds(),
+  ]);
+  if (idSet.size === 0) idSet.add('main');
+  return [...idSet].sort().map(id => ({ id, tree: readWorkstream(id) }));
+}
+
 export async function snapshotCreateCommand(opts) {
   const config = readConfig();
-  const workstream = readShared();
-  const snapshot = buildSnapshot({ workstream, author: config.me, message: opts?.message });
+  const workstreams = collectWorkstreams(config);
+  const snapshot = buildSnapshot({ workstreams, author: config.me, message: opts?.message });
   writeSnapshot(snapshot);
   const label = snapshot.message ? ` (${snapshot.message})` : '';
   await commitAndPush(config, `snapshot: ${snapshot.id} created by ${config.me}${label}`,
@@ -76,12 +85,16 @@ export async function snapshotShowCommand(prefix) {
   const id = resolveOrExit(prefix);
   const snapshot = readSnapshot(id);
   const config = readConfig();
-  const md = serializeToMd(snapshot.shared, config.project, snapshot.createdBy);
+  const workstreams = snapshotWorkstreams(snapshot);
   console.log(`\n# Snapshot ${snapshot.id}`);
   console.log(`# Status: ${snapshot.status} · Author: ${snapshot.createdBy} · Created: ${snapshot.createdAt}`);
   if (snapshot.message) console.log(`# Message: ${snapshot.message}`);
+  console.log(`# Workstreams: ${workstreams.map(w => w.id).join(', ') || '(none)'}`);
   console.log('');
-  console.log(md);
+  for (const w of workstreams) {
+    if (workstreams.length > 1) console.log(`\n## Workstream: ${w.id}\n`);
+    console.log(serializeToMd(w.tree, config.project, snapshot.createdBy));
+  }
 }
 
 export async function snapshotApproveCommand(prefix) {

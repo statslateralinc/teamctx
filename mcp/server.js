@@ -6,8 +6,8 @@ import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 import { CallToolRequestSchema, ListToolsRequestSchema } from '@modelcontextprotocol/sdk/types.js';
 import {
   getTeamctxDir,
-  readConfig, readShared, writeShared,
-  readSharedMd, writeSharedMd,
+  readConfig, readWorkstream, writeWorkstream, listWorkstreamIds,
+  readSharedMd, writeWorkstreamMd,
   readRoleFile, writeRoleFile,
   appendContribution, readContributions,
 } from '../src/storage.js';
@@ -26,8 +26,23 @@ export function resolveProjectDir(argv = process.argv.slice(2), env = process.en
 export const TOOLS = [
   {
     name: 'get_context',
-    description: 'Fetch the full Why/What/How tree for the current teamctx project as JSON.',
+    description: 'Fetch all workstreams (Why/What/How trees) for the current teamctx project. Returns { workstreams: [{id, tree}, ...] }.',
     inputSchema: { type: 'object', properties: {}, additionalProperties: false },
+  },
+  {
+    name: 'list_workstreams',
+    description: 'List the workstreams configured for the current project (id + name for each).',
+    inputSchema: { type: 'object', properties: {}, additionalProperties: false },
+  },
+  {
+    name: 'get_workstream',
+    description: 'Fetch a single workstream tree by id.',
+    inputSchema: {
+      type: 'object',
+      properties: { id: { type: 'string', description: 'Workstream id (e.g. "main", "tech")' } },
+      required: ['id'],
+      additionalProperties: false,
+    },
   },
   {
     name: 'get_role_context',
@@ -54,12 +69,13 @@ export const TOOLS = [
   },
   {
     name: 'submit_contribution',
-    description: 'Add a new contribution. AI updates the shared Why/What/How tree, regenerates role files, and commits.',
+    description: 'Add a new contribution to a workstream. AI updates the tree, regenerates role files for that workstream, and commits.',
     inputSchema: {
       type: 'object',
       properties: {
         text: { type: 'string' },
         author: { type: 'string', description: 'Override author; defaults to config.me' },
+        workstream: { type: 'string', description: 'Target workstream id; defaults to active or "main"' },
       },
       required: ['text'],
       additionalProperties: false,
@@ -77,7 +93,24 @@ export function makeHandlers(projectRoot) {
 
   return {
     async get_context() {
-      return textResult(readShared(dir()));
+      const teamctxDir = dir();
+      const config = readConfig(teamctxDir);
+      const ids = new Set([
+        ...(config.workstreams || []).map(w => w.id),
+        ...listWorkstreamIds(teamctxDir),
+      ]);
+      if (ids.size === 0) ids.add('main');
+      const workstreams = [...ids].sort().map(id => ({ id, tree: readWorkstream(id, teamctxDir) }));
+      return textResult({ workstreams });
+    },
+
+    async list_workstreams() {
+      const config = readConfig(dir());
+      return textResult({ workstreams: config.workstreams || [{ id: 'main', name: config.project }] });
+    },
+
+    async get_workstream({ id }) {
+      return textResult(readWorkstream(id, dir()));
     },
 
     async get_role_context({ role }) {
@@ -101,16 +134,26 @@ export function makeHandlers(projectRoot) {
       return textResult(answer);
     },
 
-    async submit_contribution({ text, author }) {
+    async submit_contribution({ text, author, workstream: wsArg }) {
       const teamctxDir = dir();
       const config = readConfig(teamctxDir);
-      const workstream = readShared(teamctxDir);
+      const targetId = wsArg || config.activeWorkstream || 'main';
+      const known = new Set([
+        ...(config.workstreams || []).map(w => w.id),
+        ...listWorkstreamIds(teamctxDir),
+      ]);
+      if (known.size > 0 && !known.has(targetId)) {
+        throw new Error(`no workstream "${targetId}". Call list_workstreams to see available ids.`);
+      }
+      const workstream = readWorkstream(targetId, teamctxDir);
       const contribution = {
         id: `mcp-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
         ts: new Date().toISOString(),
         author: author || config.me,
         text,
         tagged: null,
+        source: 'mcp',
+        workstream: targetId,
         status: 'logged',
       };
       appendContribution(contribution, teamctxDir);
@@ -118,24 +161,26 @@ export function makeHandlers(projectRoot) {
       const { workstream: updated, summary, operations } = await updateShared(workstream, contribution, config);
 
       if (!operations || operations.length === 0) {
-        return textResult({ id: contribution.id, summary: 'No changes to context tree (contribution logged).', operations: [] });
+        return textResult({ id: contribution.id, workstream: targetId, summary: 'No changes to context tree (contribution logged).', operations: [] });
       }
 
-      writeShared(updated, teamctxDir);
+      writeWorkstream(targetId, updated, teamctxDir);
       const contributions = readContributions(teamctxDir);
-      writeSharedMd(serializeToMd(updated, config.project, contribution.author, contributions), teamctxDir);
+      writeWorkstreamMd(targetId, serializeToMd(updated, config.project, contribution.author, contributions), teamctxDir);
 
-      for (const role of config.roles || []) {
+      const rolesOnTarget = (config.roles || []).filter(r => (r.workstream || 'main') === targetId);
+      for (const role of rolesOnTarget) {
         const md = await generateRoleFile(updated, role, config.project, config, contributions);
         writeRoleFile(role.slug, md, teamctxDir);
       }
 
-      await commitContext(`context: ${contribution.author} contribution (via mcp)`, { cwd: projectRoot });
+      const wsNote = targetId === 'main' ? '' : ` (${targetId})`;
+      await commitContext(`context: ${contribution.author} contribution (via mcp)${wsNote}`, { cwd: projectRoot });
       if (config.autoPush) {
         try { await pushContext({ cwd: projectRoot }); } catch { /* non-fatal */ }
       }
 
-      return textResult({ id: contribution.id, summary, operations });
+      return textResult({ id: contribution.id, workstream: targetId, summary, operations });
     },
   };
 }

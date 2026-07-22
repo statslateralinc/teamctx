@@ -1,10 +1,14 @@
 import {
-  readConfig, readShared, writeShared, writeSharedMd, writeRoleFile,
-  listQueue, readQueueItem, deleteQueueItem, writeRejected,
+  readConfig, readWorkstream, writeWorkstream, writeWorkstreamMd, writeRoleFile,
+  listQueue, readQueueItem, deleteQueueItem, writeRejected, readContributions,
 } from '../../src/storage.js';
 import { applyQueueItem, buildRejected, canApprove } from '../../src/review.js';
 import { serializeToMd, generateRoleFile } from '../../src/context.js';
 import { commitContext, pushContext } from '../../src/git.js';
+
+function workstreamDisplayName(id, workstream, config) {
+  return config.workstreams?.find(w => w.id === id)?.name || workstream.name || config.project;
+}
 
 function checkManagerGate(config) {
   if (!canApprove(config)) {
@@ -49,16 +53,19 @@ export async function reviewApproveCommand(id) {
     process.exit(1);
   }
 
-  const workstream = readShared();
+  const targetId = item.workstream || 'main';
+  const workstream = readWorkstream(targetId);
   const updated = applyQueueItem(workstream, item);
+  const contributions = readContributions();
 
-  writeShared(updated);
-  writeSharedMd(serializeToMd(updated, config.project, item.author));
+  writeWorkstream(targetId, updated);
+  writeWorkstreamMd(targetId, serializeToMd(updated, workstreamDisplayName(targetId, updated, config), item.author, contributions));
 
-  if (config.roles.length > 0) {
-    console.log(`→ Regenerating ${config.roles.length} role file${config.roles.length !== 1 ? 's' : ''}...`);
-    for (const role of config.roles) {
-      const md = await generateRoleFile(updated, role, config.project, config);
+  const rolesOnTarget = (config.roles || []).filter(r => (r.workstream || 'main') === targetId);
+  if (rolesOnTarget.length > 0) {
+    console.log(`→ Regenerating ${rolesOnTarget.length} role file${rolesOnTarget.length !== 1 ? 's' : ''}...`);
+    for (const role of rolesOnTarget) {
+      const md = await generateRoleFile(updated, role, config.project, config, contributions);
       writeRoleFile(role.slug, md);
       process.stdout.write(`  ✓ ${role.slug}.md\n`);
     }
@@ -67,7 +74,8 @@ export async function reviewApproveCommand(id) {
   deleteQueueItem(item.id);
 
   const note = item.tagged === 'decision' ? ' [decision]' : '';
-  await commitContext(`context: ${item.author} contribution (approved by ${config.me})${note}`);
+  const wsNote = targetId === 'main' ? '' : ` (${targetId})`;
+  await commitContext(`context: ${item.author} contribution (approved by ${config.me})${note}${wsNote}`);
 
   if (config.autoPush) {
     try { await pushContext(); console.log('\n✓ Approved, committed, and pushed.'); }
