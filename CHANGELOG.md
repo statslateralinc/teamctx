@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- Bring-your-own-agent recipes: new `recipes/` folder with two tool-agnostic
+  prompt templates (`author-contribution.md`, `cleanup-context.md`) and per-tool
+  guides for Claude Code, Cursor, and ChatGPT. Copy-paste prompts that shape
+  rough notes into well-formed contributions and clean up the shared tree
+  before running `teamctx reflect`.
+
 ## [0.2.0] - 2026-07-21
 
 ### Added
