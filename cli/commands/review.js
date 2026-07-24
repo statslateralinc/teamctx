@@ -1,20 +1,7 @@
-import {
-  readConfig, readShared, writeShared, writeSharedMd, writeRoleFile,
-  listQueue, readQueueItem, deleteQueueItem, writeRejected,
-} from '../../src/storage.js';
-import { applyQueueItem, buildRejected, canApprove } from '../../src/review.js';
-import { serializeToMd, generateRoleFile } from '../../src/context.js';
-import { commitContext, pushContext } from '../../src/git.js';
-
-function checkManagerGate(config) {
-  if (!canApprove(config)) {
-    console.error(`Error: only the configured manager (${config.manager}) may approve or reject. You are ${config.me}.`);
-    process.exit(1);
-  }
-}
+import { listPendingReviews, approveReview, rejectReview, ManagerGateError, QueueItemNotFoundError } from './review.core.js';
 
 export async function reviewListCommand() {
-  const queue = listQueue();
+  const queue = await listPendingReviews();
   if (queue.length === 0) {
     console.log('\nNo pending contributions.\n');
     return;
@@ -37,68 +24,44 @@ export async function reviewListCommand() {
   console.log('');
 }
 
-export async function reviewApproveCommand(id) {
-  const config = readConfig();
-  checkManagerGate(config);
-
-  let item;
-  try {
-    item = readQueueItem(id);
-  } catch {
-    console.error(`Error: no pending contribution with id "${id}". Run \`teamctx review list\` to see the queue.`);
+function handleCliError(err) {
+  if (err instanceof ManagerGateError || err instanceof QueueItemNotFoundError) {
+    console.error(`Error: ${err.message}`);
     process.exit(1);
   }
+  throw err;
+}
 
-  const workstream = readShared();
-  const updated = applyQueueItem(workstream, item);
+export async function reviewApproveCommand(id) {
+  let result;
+  try { result = await approveReview({ id }); }
+  catch (err) { handleCliError(err); return; }
 
-  writeShared(updated);
-  writeSharedMd(serializeToMd(updated, config.project, item.author));
-
-  if (config.roles.length > 0) {
-    console.log(`→ Regenerating ${config.roles.length} role file${config.roles.length !== 1 ? 's' : ''}...`);
-    for (const role of config.roles) {
-      const md = await generateRoleFile(updated, role, config.project, config);
-      writeRoleFile(role.slug, md);
-      process.stdout.write(`  ✓ ${role.slug}.md\n`);
-    }
+  if (result.rolesRegenerated.length > 0) {
+    console.log(`→ Regenerating ${result.rolesRegenerated.length} role file${result.rolesRegenerated.length !== 1 ? 's' : ''}...`);
+    result.rolesRegenerated.forEach(slug => process.stdout.write(`  ✓ ${slug}.md\n`));
   }
 
-  deleteQueueItem(item.id);
-
-  const note = item.tagged === 'decision' ? ' [decision]' : '';
-  await commitContext(`context: ${item.author} contribution (approved by ${config.me})${note}`);
-
-  if (config.autoPush) {
-    try { await pushContext(); console.log('\n✓ Approved, committed, and pushed.'); }
-    catch (err) { console.log(`\n✓ Approved and committed. Push failed (${err.message?.split('\n')[0] || 'no remote?'}) — run \`git push\` manually.`); }
+  if (result.pushed) {
+    console.log('\n✓ Approved, committed, and pushed.');
+  } else if (result.pushError) {
+    console.log(`\n✓ Approved and committed. Push failed (${result.pushError}) — run \`git push\` manually.`);
   } else {
     console.log('\n✓ Approved and committed. Run `git push` to share with your team.');
   }
 }
 
 export async function reviewRejectCommand(id, opts) {
-  const config = readConfig();
-  checkManagerGate(config);
+  let result;
+  try { result = await rejectReview({ id, reason: opts?.reason }); }
+  catch (err) { handleCliError(err); return; }
 
-  let item;
-  try {
-    item = readQueueItem(id);
-  } catch {
-    console.error(`Error: no pending contribution with id "${id}". Run \`teamctx review list\` to see the queue.`);
-    process.exit(1);
-  }
-
-  writeRejected(buildRejected(item, config.me, opts?.reason));
-  deleteQueueItem(item.id);
-
-  const reasonNote = opts?.reason ? ` (reason: ${opts.reason})` : '';
-  await commitContext(`review: rejected ${item.id} by ${config.me}${opts?.reason ? ` (${opts.reason})` : ''}`);
-
-  if (config.autoPush) {
-    try { await pushContext(); console.log(`\n✓ Rejected contribution ${item.id}${reasonNote}. Archived, committed, and pushed.\n`); }
-    catch (err) { console.log(`\n✓ Rejected contribution ${item.id}${reasonNote}. Archived and committed. Push failed (${err.message?.split('\n')[0] || 'no remote?'}) — run \`git push\` manually.\n`); }
+  const reasonNote = result.reason ? ` (reason: ${result.reason})` : '';
+  if (result.pushed) {
+    console.log(`\n✓ Rejected contribution ${result.id}${reasonNote}. Archived, committed, and pushed.\n`);
+  } else if (result.pushError) {
+    console.log(`\n✓ Rejected contribution ${result.id}${reasonNote}. Archived and committed. Push failed (${result.pushError}) — run \`git push\` manually.\n`);
   } else {
-    console.log(`\n✓ Rejected contribution ${item.id}${reasonNote}. Archived to .teamctx/rejected/ and committed. Run \`git push\` to share with your team.\n`);
+    console.log(`\n✓ Rejected contribution ${result.id}${reasonNote}. Archived to .teamctx/rejected/ and committed. Run \`git push\` to share with your team.\n`);
   }
 }

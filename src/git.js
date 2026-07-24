@@ -3,9 +3,9 @@ import { promisify } from 'util';
 
 const execFileAsync = promisify(execFile);
 
-export async function checkGitRepo() {
+export async function checkGitRepo({ cwd } = {}) {
   try {
-    await execFileAsync('git', ['rev-parse', '--git-dir']);
+    await execFileAsync('git', ['rev-parse', '--git-dir'], cwd ? { cwd } : undefined);
   } catch {
     throw new Error('teamctx must be run inside a git repository. Run `git init` first.');
   }

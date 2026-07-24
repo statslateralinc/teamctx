@@ -2,20 +2,26 @@ export function newSnapshotId() {
   return `snap-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
 }
 
-export function buildSnapshot({ workstream, author, message }) {
+export function buildSnapshot({ workstreams, author, message }) {
   return {
     id: newSnapshotId(),
     createdAt: new Date().toISOString(),
     createdBy: author,
     message: message || null,
     status: 'pending',
-    shared: workstream,
+    workstreams: workstreams || [],
     approvedAt: null,
     approvedBy: null,
     rejectedAt: null,
     rejectedBy: null,
     reason: null,
   };
+}
+
+export function snapshotWorkstreams(snapshot) {
+  if (Array.isArray(snapshot?.workstreams)) return snapshot.workstreams;
+  if (snapshot?.shared) return [{ id: snapshot.shared.id || 'main', tree: snapshot.shared }];
+  return [];
 }
 
 export function buildApproved(snapshot, approvedBy) {

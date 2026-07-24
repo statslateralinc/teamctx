@@ -1,32 +1,8 @@
-import { existsSync, mkdirSync, writeFileSync, readFileSync } from 'fs';
-import { join } from 'path';
 import { ask, askChoice } from '../prompt.js';
-import { checkGitRepo, commitContext, pushContext } from '../../src/git.js';
 import { getModelsFor, getDefaultModelFor } from '../../src/ai.js';
-import { writeConfig, writeWorkstream, writeWorkstreamMd } from '../../src/storage.js';
-import { serializeToMd } from '../../src/context.js';
-
-function unignoreTeamctx() {
-  const gitignorePath = join(process.cwd(), '.gitignore');
-  if (!existsSync(gitignorePath)) return;
-  const lines = readFileSync(gitignorePath, 'utf-8').split('\n');
-  const filtered = lines.filter(l => l.trim() !== '.teamctx/' && l.trim() !== '.teamctx');
-  if (filtered.length !== lines.length) {
-    writeFileSync(gitignorePath, filtered.join('\n'));
-    console.log('→ Removed .teamctx/ from .gitignore (it must be tracked in your private repo).\n');
-  }
-}
+import { getProviders, initProject } from './init.core.js';
 
 export async function initCommand() {
-  await checkGitRepo();
-  unignoreTeamctx();
-
-  const teamctxDir = join(process.cwd(), '.teamctx');
-  if (existsSync(teamctxDir)) {
-    console.error('Error: .teamctx/ already exists. This project is already initialized.');
-    process.exit(1);
-  }
-
   console.log('\nWelcome to teamctx. Setting up your project context.\n');
 
   const project = await ask('Project name');
@@ -35,23 +11,14 @@ export async function initCommand() {
   const me = await ask('Your name or handle (used on contributions)');
   if (!me) { console.error('Name is required.'); process.exit(1); }
 
-  const PROVIDERS = [
-    { id: 'anthropic', label: 'Anthropic (Claude)',    envVar: 'ANTHROPIC_API_KEY' },
-    { id: 'openai',    label: 'OpenAI (GPT)',          envVar: 'OPENAI_API_KEY' },
-    { id: 'gemini',    label: 'Google Gemini',         envVar: 'GEMINI_API_KEY' },
-  ];
-  const providerIdx = await askChoice('AI provider', PROVIDERS.map(p => p.label), 0);
-  const providerId = PROVIDERS[providerIdx].id;
-  const providerEnvVar = PROVIDERS[providerIdx].envVar;
+  const providers = getProviders();
+  const providerIdx = await askChoice('AI provider', providers.map(p => p.label), 0);
+  const provider = providers[providerIdx].id;
 
-  const models = getModelsFor(providerId);
-  const defaultModel = getDefaultModelFor(providerId);
+  const models = getModelsFor(provider);
+  const defaultModel = getDefaultModelFor(provider);
   const modelIdx = await askChoice('AI model', models.map(m => m.label), models.findIndex(m => m.id === defaultModel));
   const model = models[modelIdx].id;
-
-  if (!process.env[providerEnvVar]) {
-    console.log(`\nNote: ${providerEnvVar} is not set. Add it to .env.local before running teamctx contribute, ask, or reflect.`);
-  }
 
   const autoPushAnswer = await ask('Auto-push to git after each update? (y/n)', 'y');
   const autoPush = autoPushAnswer.toLowerCase() === 'y';
@@ -60,31 +27,23 @@ export async function initCommand() {
   const githubRawBase = await ask('GitHub raw base URL (optional, e.g. https://raw.githubusercontent.com/org/repo/main)', '');
   const managerEmail = await ask('Your email (optional, for team contribution notifications)', '');
 
-  mkdirSync(join(teamctxDir, 'context', 'roles'), { recursive: true });
+  const result = await initProject({
+    projectDir: process.cwd(),
+    project, me, provider, model, autoPush,
+    deployUrl, githubRawBase, managerEmail,
+  });
 
-  const createdAt = new Date().toISOString();
-  const config = {
-    project, me, provider: providerId, model, autoPush,
-    deployUrl: deployUrl || '', githubRawBase: githubRawBase || '', managerEmail: managerEmail || '',
-    roles: [],
-    workstreams: [{ id: 'main', name: project, createdAt }],
-    activeWorkstream: 'main',
-    workstreamsMigrated: true,
-  };
-  writeConfig(config, teamctxDir);
-
-  const workstream = { id: 'main', name: project, whys: [] };
-  writeWorkstream('main', workstream, teamctxDir);
-  writeWorkstreamMd('main', serializeToMd(workstream, project), teamctxDir);
-  writeFileSync(join(teamctxDir, 'contributions.jsonl'), '');
-
-  await commitContext(`chore: initialize teamctx for "${project}"`);
-
-  if (autoPush) {
-    try { await pushContext(); } catch { console.log('Note: push skipped (no remote yet).'); }
+  if (result.gitignoreChanged) {
+    console.log('→ Removed .teamctx/ from .gitignore (it must be tracked in your private repo).\n');
+  }
+  if (!result.envVarPresent) {
+    console.log(`\nNote: ${result.envVarNeeded} is not set. Add it to .env.local before running teamctx contribute, ask, or reflect.`);
+  }
+  if (result.config.autoPush && !result.pushed) {
+    console.log('Note: push skipped (no remote yet).');
   }
 
-  console.log(`\n✓ teamctx initialized for "${project}"`);
+  console.log(`\n✓ teamctx initialized for "${result.config.project}"`);
   console.log('\nNext steps:');
   console.log('  teamctx contribute "<your first project update>"');
   console.log('  teamctx role add');

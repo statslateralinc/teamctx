@@ -1,59 +1,42 @@
-import {
-  readConfig, readShared,
-  writeSnapshot, readSnapshot, listSnapshots, resolveSnapshotId,
-  readCurrentSnapshotPointer, writeCurrentSnapshotPointer,
-} from '../../src/storage.js';
-import { buildSnapshot, buildApproved, buildRejected, buildPointer } from '../../src/snapshots.js';
-import { canApprove } from '../../src/review.js';
+import { readConfig } from '../../src/storage.js';
 import { serializeToMd } from '../../src/context.js';
-import { commitContext, pushContext } from '../../src/git.js';
+import { ManagerGateError } from './review.core.js';
+import {
+  createSnapshot, approveSnapshot, rejectSnapshot,
+  listAllSnapshots, getSnapshot, getCurrentSnapshot,
+  SnapshotNotFoundError, SnapshotStateError,
+} from './snapshot.core.js';
 
-function checkManagerGate(config) {
-  if (!canApprove(config)) {
-    console.error(`Error: only the configured manager (${config.manager}) may approve or reject snapshots. You are ${config.me}.`);
-    process.exit(1);
-  }
+function reportCommit(config, successLine, pushed, pushError) {
+  if (pushed) return console.log(`\n${successLine} — committed and pushed.\n`);
+  if (pushError) return console.log(`\n${successLine} — committed. Push failed (${pushError}) — run \`git push\` manually.\n`);
+  return console.log(`\n${successLine} — committed. Run \`git push\` to share with your team.\n`);
 }
 
-function resolveOrExit(prefix) {
-  try {
-    return resolveSnapshotId(prefix);
-  } catch (err) {
-    console.error(`Error: ${err.message}. Run \`teamctx snapshot list\` to see snapshots.`);
+function handleCliError(err) {
+  if (err instanceof ManagerGateError || err instanceof SnapshotNotFoundError || err instanceof SnapshotStateError) {
+    console.error(`Error: ${err.message}`);
     process.exit(1);
   }
-}
-
-async function commitAndPush(config, msg, successLine) {
-  await commitContext(msg);
-  if (config.autoPush) {
-    try { await pushContext(); console.log(`\n${successLine} — committed and pushed.\n`); }
-    catch (err) { console.log(`\n${successLine} — committed. Push failed (${err.message?.split('\n')[0] || err.stderr?.trim() || 'no remote?'}) — run \`git push\` manually.\n`); }
-  } else {
-    console.log(`\n${successLine} — committed. Run \`git push\` to share with your team.\n`);
-  }
+  throw err;
 }
 
 export async function snapshotCreateCommand(opts) {
+  let result;
+  try { result = await createSnapshot({ message: opts?.message }); }
+  catch (err) { handleCliError(err); return; }
   const config = readConfig();
-  const workstream = readShared();
-  const snapshot = buildSnapshot({ workstream, author: config.me, message: opts?.message });
-  writeSnapshot(snapshot);
-  const label = snapshot.message ? ` (${snapshot.message})` : '';
-  await commitAndPush(config, `snapshot: ${snapshot.id} created by ${config.me}${label}`,
-    `✓ Snapshot ${snapshot.id} created${label}`);
-  console.log(`  Manager: after \`git pull\`, run \`teamctx snapshot approve ${snapshot.id}\` or \`teamctx snapshot reject ${snapshot.id}\`.`);
+  const label = result.snapshot.message ? ` (${result.snapshot.message})` : '';
+  reportCommit(config, `✓ Snapshot ${result.snapshot.id} created${label}`, result.pushed, result.pushError);
+  console.log(`  Manager: after \`git pull\`, run \`teamctx snapshot approve ${result.snapshot.id}\` or \`teamctx snapshot reject ${result.snapshot.id}\`.`);
 }
 
 export async function snapshotListCommand() {
-  const snapshots = listSnapshots();
+  const { snapshots, currentId } = listAllSnapshots();
   if (snapshots.length === 0) {
     console.log('\nNo snapshots yet.\n');
     return;
   }
-  const pointer = readCurrentSnapshotPointer();
-  const currentId = pointer?.id;
-
   console.log(`\n${snapshots.length} snapshot${snapshots.length !== 1 ? 's' : ''}${currentId ? ` (current: ${currentId})` : ''}:\n`);
   const header = [' ', 'ID', 'Status', 'Author', 'Created', 'Message'];
   const rows = snapshots.map(s => [
@@ -73,55 +56,41 @@ export async function snapshotListCommand() {
 }
 
 export async function snapshotShowCommand(prefix) {
-  const id = resolveOrExit(prefix);
-  const snapshot = readSnapshot(id);
+  let result;
+  try { result = getSnapshot({ prefix }); }
+  catch (err) { handleCliError(err); return; }
+  const { snapshot, workstreams } = result;
   const config = readConfig();
-  const md = serializeToMd(snapshot.shared, config.project, snapshot.createdBy);
   console.log(`\n# Snapshot ${snapshot.id}`);
   console.log(`# Status: ${snapshot.status} · Author: ${snapshot.createdBy} · Created: ${snapshot.createdAt}`);
   if (snapshot.message) console.log(`# Message: ${snapshot.message}`);
+  console.log(`# Workstreams: ${workstreams.map(w => w.id).join(', ') || '(none)'}`);
   console.log('');
-  console.log(md);
+  for (const w of workstreams) {
+    if (workstreams.length > 1) console.log(`\n## Workstream: ${w.id}\n`);
+    console.log(serializeToMd(w.tree, config.project, snapshot.createdBy));
+  }
 }
 
 export async function snapshotApproveCommand(prefix) {
+  let result;
+  try { result = await approveSnapshot({ prefix }); }
+  catch (err) { handleCliError(err); return; }
   const config = readConfig();
-  checkManagerGate(config);
-  const id = resolveOrExit(prefix);
-  const snapshot = readSnapshot(id);
-  if (snapshot.status === 'approved') {
-    console.error(`Error: snapshot ${id} is already approved.`);
-    process.exit(1);
-  }
-  if (snapshot.status === 'rejected') {
-    console.error(`Error: snapshot ${id} was rejected and cannot be approved. Create a new snapshot.`);
-    process.exit(1);
-  }
-  const approved = buildApproved(snapshot, config.me);
-  writeSnapshot(approved);
-  writeCurrentSnapshotPointer(buildPointer(approved));
-  await commitAndPush(config, `snapshot: ${id} approved by ${config.me}`,
-    `✓ Snapshot ${id} approved and marked current`);
+  reportCommit(config, `✓ Snapshot ${result.id} approved and marked current`, result.pushed, result.pushError);
 }
 
 export async function snapshotRejectCommand(prefix, opts) {
+  let result;
+  try { result = await rejectSnapshot({ prefix, reason: opts?.reason }); }
+  catch (err) { handleCliError(err); return; }
   const config = readConfig();
-  checkManagerGate(config);
-  const id = resolveOrExit(prefix);
-  const snapshot = readSnapshot(id);
-  if (snapshot.status !== 'pending') {
-    console.error(`Error: snapshot ${id} has status "${snapshot.status}" — only pending snapshots can be rejected.`);
-    process.exit(1);
-  }
-  const rejected = buildRejected(snapshot, config.me, opts?.reason);
-  writeSnapshot(rejected);
-  const reasonNote = opts?.reason ? ` (reason: ${opts.reason})` : '';
-  await commitAndPush(config, `snapshot: ${id} rejected by ${config.me}${opts?.reason ? ` (${opts.reason})` : ''}`,
-    `✓ Snapshot ${id} rejected${reasonNote}`);
+  const reasonNote = result.reason ? ` (reason: ${result.reason})` : '';
+  reportCommit(config, `✓ Snapshot ${result.id} rejected${reasonNote}`, result.pushed, result.pushError);
 }
 
 export async function snapshotCurrentCommand() {
-  const pointer = readCurrentSnapshotPointer();
+  const pointer = getCurrentSnapshot();
   if (!pointer) {
     console.log('\nNo approved snapshot yet. Run `teamctx snapshot create` then have the manager approve it.\n');
     return;

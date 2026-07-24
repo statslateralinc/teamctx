@@ -1,9 +1,9 @@
 import { ask } from '../prompt.js';
-import { readConfig, readWorkstream, writeWorkstream, writeWorkstreamMd, appendContribution, writeRoleFile, writeQueueItem, readContributions } from '../../src/storage.js';
+import { readConfig, readWorkstream, writeWorkstream, writeWorkstreamMd, appendContribution, writeRoleFile, writeQueueItem, readContributions, listWorkstreamIds } from '../../src/storage.js';
 import { updateShared, generateRoleFile, serializeToMd } from '../../src/context.js';
 import { commitContext, pushContext } from '../../src/git.js';
 
-function newContribution(text, author, tagged, source) {
+function newContribution(text, author, tagged, source, workstream) {
   return {
     id: `c-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
     ts: new Date().toISOString(),
@@ -11,6 +11,7 @@ function newContribution(text, author, tagged, source) {
     text,
     tagged: tagged || null,
     source: source || 'cli',
+    workstream: workstream || 'main',
     status: 'logged',
   };
 }
@@ -22,14 +23,17 @@ function workstreamDisplayName(id, workstream, config) {
 export async function contributeCommand(text, opts) {
   const config = readConfig();
   const targetId = opts.workstream || config.activeWorkstream || 'main';
-  const known = new Set((config.workstreams || []).map(w => w.id));
+  const known = new Set([
+    ...(config.workstreams || []).map(w => w.id),
+    ...listWorkstreamIds(),
+  ]);
   if (config.workstreams && !known.has(targetId)) {
     console.error(`Error: no workstream "${targetId}". Run \`teamctx workstream list\`.`);
     process.exit(1);
   }
   const workstream = readWorkstream(targetId);
   const tagged = opts.decision ? 'decision' : null;
-  const contribution = newContribution(text, config.me, tagged, opts.source);
+  const contribution = newContribution(text, config.me, tagged, opts.source, targetId);
 
   appendContribution(contribution);
   const wsLabel = targetId === 'main' ? '' : ` [workstream: ${targetId}]`;
@@ -66,6 +70,7 @@ export async function contributeCommand(text, opts) {
       createdAt: contribution.ts,
       author: contribution.author,
       source: 'cli',
+      workstream: targetId,
       text: contribution.text,
       tagged: contribution.tagged,
       summary,
