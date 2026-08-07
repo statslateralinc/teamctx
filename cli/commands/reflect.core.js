@@ -1,4 +1,4 @@
-import { readConfig, readWorkstream, writeWorkstream, writeWorkstreamMd, readContributions, writeRoleFile } from '../../src/storage.js';
+import { readConfig, readWorkstream, writeWorkstream, writeWorkstreamMd, readContributions, writeRoleFile, listWorkstreamIds } from '../../src/storage.js';
 import { generateReflection, serializeToMd, generateRoleFile } from '../../src/context.js';
 import { extractJson } from '../../src/ai.js';
 import { commitContext, pushContext } from '../../src/git.js';
@@ -7,8 +7,9 @@ import { UnknownWorkstreamError } from './role.core.js';
 export async function reflectWorkstream({ workstreamId, teamctxDir, projectDir } = {}) {
   const config = readConfig(teamctxDir);
   const targetId = workstreamId || config.activeWorkstream || 'main';
+  const knownIds = new Set([...(config.workstreams || []).map(w => w.id), ...listWorkstreamIds(teamctxDir)]);
+  if (!knownIds.has(targetId)) throw new UnknownWorkstreamError(targetId);
   const workstream = readWorkstream(targetId, teamctxDir);
-  if (!workstream) throw new UnknownWorkstreamError(targetId);
   const contributions = readContributions(teamctxDir);
 
   const raw = await generateReflection(workstream, contributions, config);

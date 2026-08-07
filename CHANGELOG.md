@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- `reflect` now rejects unknown workstream ids instead of creating empty workstream stubs.
+
 ## [0.3.0] - 2026-08-07
 
 ### Added
