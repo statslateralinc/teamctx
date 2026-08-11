@@ -81,7 +81,9 @@ becomes a well-scoped PR that no one has to redesign.
 
 5. **Then one PR per source.** Slack first: threads are where decisions get made
    and then lost, which makes it the highest-leverage and the hardest to keep
-   signal-rich.
+   signal-rich. Written up in [Slack import connector](import-slack.md) — note
+   the 2025 rate-limit change there, which makes the user's-own-token model the
+   only workable one.
 
 ## Where to start
 
