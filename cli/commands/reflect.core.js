@@ -4,9 +4,19 @@ import { extractJson } from '../../src/ai.js';
 import { commitContext, pushContext } from '../../src/git.js';
 import { UnknownWorkstreamError } from './role.core.js';
 
+import { resolveActor } from '../../src/actor.js';
+import { resolveActiveWorkstream } from '../../src/prefs.js';
+
+/** The caller's active workstream — their own preference, then the project default. */
+async function activeId(config, teamctxDir, projectDir) {
+  const actor = await resolveActor({ config, cwd: projectDir });
+  return resolveActiveWorkstream({ actor, config, teamctxDir });
+}
+
+
 export async function reflectWorkstream({ workstreamId, teamctxDir, projectDir } = {}) {
   const config = readConfig(teamctxDir);
-  const targetId = workstreamId || config.activeWorkstream || 'main';
+  const targetId = workstreamId || await activeId(config, teamctxDir, projectDir);
   const knownIds = new Set([...(config.workstreams || []).map(w => w.id), ...listWorkstreamIds(teamctxDir)]);
   if (!knownIds.has(targetId)) throw new UnknownWorkstreamError(targetId);
   const workstream = readWorkstream(targetId, teamctxDir);

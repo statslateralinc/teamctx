@@ -4,6 +4,7 @@ import { ask } from '../prompt.js';
 import { getTeamctxDir, readConfig } from '../../src/storage.js';
 import { pullContext } from '../../src/git.js';
 import { contributeCommand } from './contribute.js';
+import { currentIdentity } from '../identity.js';
 
 export async function pullCommand() {
   process.stdout.write('→ Syncing with remote...');
@@ -44,7 +45,8 @@ export async function pullCommand() {
 
     if (answer.toLowerCase() === 'y') {
       const config = readConfig();
-      const text = item.author && item.author !== config.me
+      const { me } = await currentIdentity(config);
+      const text = item.author && item.author !== me
         ? `[From ${item.author}] ${item.text}`
         : item.text;
       try {

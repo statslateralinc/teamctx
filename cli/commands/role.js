@@ -5,6 +5,7 @@ import {
   suggestRoleDetails, addRoleFull, assignRole,
   slugify, UnknownRoleError, UnknownWorkstreamError,
 } from './role.core.js';
+import { currentIdentity } from '../identity.js';
 
 function cliError(err) {
   if (err instanceof UnknownRoleError || err instanceof UnknownWorkstreamError) {
@@ -54,7 +55,7 @@ async function listRolesCli() {
 
 async function addRoleInteractive(prefill = {}, opts = {}) {
   const config = readConfig();
-  const workstreamId = opts.workstream || config.activeWorkstream || 'main';
+  const workstreamId = opts.workstream || (await currentIdentity(config)).activeWorkstream;
   const known = new Set([...(config.workstreams || []).map(w => w.id), ...listWorkstreamIds()]);
   if (config.workstreams && !known.has(workstreamId)) {
     console.error(`Error: no workstream "${workstreamId}". Run \`teamctx workstream list\`.`);

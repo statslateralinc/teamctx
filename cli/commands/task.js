@@ -6,6 +6,7 @@ import {
 } from '../../src/storage.js';
 import { compileTaskPrompt } from '../../src/context.js';
 import { commitContext, pushContext } from '../../src/git.js';
+import { currentIdentity } from '../identity.js';
 
 function whysHash(workstream) {
   const material = JSON.stringify({
@@ -38,8 +39,8 @@ function todayIso() {
   return new Date().toISOString().slice(0, 10);
 }
 
-function resolveTargetWorkstream(config, requested) {
-  const targetId = requested || config.activeWorkstream || 'main';
+async function resolveTargetWorkstream(config, requested) {
+  const targetId = requested || (await currentIdentity(config)).activeWorkstream;
   const known = new Set((config.workstreams || []).map(w => w.id));
   if (known.size > 0 && !known.has(targetId)) {
     console.error(`Error: no workstream "${targetId}". Run \`teamctx workstream list\`.`);
@@ -74,13 +75,13 @@ async function commitAndPush(config, msg, successLine) {
 
 export async function taskAddCommand(title, opts = {}) {
   const config = readConfig();
-  const workstream = resolveTargetWorkstream(config, opts.workstream);
+  const workstream = await resolveTargetWorkstream(config, opts.workstream);
   const base = slugify(title);
   const id = uniqueTaskId(base, undefined);
   const task = {
     id,
     title: String(title),
-    owner: opts.owner || config.me,
+    owner: opts.owner || (await currentIdentity(config)).me,
     status: 'open',
     workstream,
     createdAt: todayIso(),
@@ -89,7 +90,7 @@ export async function taskAddCommand(title, opts = {}) {
   };
   writeTask(task);
   const wsLabel = workstream === 'main' ? '' : ` [workstream: ${workstream}]`;
-  await commitAndPush(config, `task: add ${id} by ${config.me}${wsLabel}`,
+  await commitAndPush(config, `task: add ${id} by ${(await currentIdentity(config)).me}${wsLabel}`,
     `✓ Task ${id} added${wsLabel}`);
   console.log(`  Owner: ${task.owner}`);
   console.log(`  Compile a prompt for it with: teamctx task compile ${id}`);
@@ -97,7 +98,7 @@ export async function taskAddCommand(title, opts = {}) {
 
 export async function taskListCommand(opts = {}) {
   const config = readConfig();
-  const scope = opts.all ? {} : { workstream: config.activeWorkstream || 'main' };
+  const scope = opts.all ? {} : { workstream: (await currentIdentity(config)).activeWorkstream };
   let tasks = listTasks(scope);
   if (opts.status) tasks = tasks.filter(t => t.status === opts.status);
   if (opts.owner) tasks = tasks.filter(t => t.owner === opts.owner);
@@ -150,7 +151,7 @@ export async function taskDoneCommand(idOrPrefix) {
     return;
   }
   writeTask({ ...task, status: 'done', doneAt: todayIso() });
-  await commitAndPush(config, `task: done ${task.id} by ${config.me}`,
+  await commitAndPush(config, `task: done ${task.id} by ${(await currentIdentity(config)).me}`,
     `✓ Task ${task.id} marked done`);
 }
 
@@ -162,7 +163,7 @@ export async function taskReopenCommand(idOrPrefix) {
     return;
   }
   writeTask({ ...task, status: 'open', doneAt: null });
-  await commitAndPush(config, `task: reopen ${task.id} by ${config.me}`,
+  await commitAndPush(config, `task: reopen ${task.id} by ${(await currentIdentity(config)).me}`,
     `✓ Task ${task.id} reopened`);
 }
 
@@ -181,7 +182,7 @@ export async function taskAssignCommand(idOrPrefix, opts = {}) {
 export async function taskRmCommand(idOrPrefix) {
   const config = readConfig();
   const { id, workstream } = deleteTask(idOrPrefix);
-  await commitAndPush(config, `task: rm ${id} by ${config.me}`,
+  await commitAndPush(config, `task: rm ${id} by ${(await currentIdentity(config)).me}`,
     `✓ Task ${id} removed (workstream: ${workstream})`);
 }
 
@@ -215,7 +216,7 @@ export async function taskCompileCommand(idOrPrefix, opts = {}) {
   writeTask({ ...task, compiledAt: new Date().toISOString(), compiledFromHash: currentHash });
 
   const roleTag = opts.role ? ` (role: ${opts.role})` : '';
-  await commitAndPush(config, `task: compile ${task.id} by ${config.me}${roleTag}`,
+  await commitAndPush(config, `task: compile ${task.id} by ${(await currentIdentity(config)).me}${roleTag}`,
     `✓ Task prompt compiled for ${task.id}${roleTag}`);
   console.log(`  Prompt file: ${taskFilePath(task.id)}`);
   console.log(`  Copy that file's contents into your AI (ChatGPT, Claude, Cursor, ...).\n`);

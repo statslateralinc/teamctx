@@ -140,6 +140,12 @@ export const keys = {
   refresh: token => `oauth:refresh:${token}`,
   /** Per-user AI provider key, set via the settings page. Long-lived. */
   aiKey: githubUserId => `teamctx:aikey:${githubUserId}`,
+  /**
+   * Per-user, per-project settings (display name, active workstream). These are
+   * personal, so they deliberately live here rather than in the repo's
+   * config.json — see src/prefs.js. Long-lived.
+   */
+  prefs: (actorKey, owner, repo) => `teamctx:prefs:${actorKey}:${owner}/${repo}`,
   /** Browser session for the settings page. 1 hour. */
   session: sid => `teamctx:session:${sid}`,
 };

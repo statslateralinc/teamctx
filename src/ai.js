@@ -1,5 +1,6 @@
 import { jsonrepair } from 'jsonrepair';
 import { getProvider } from './providers/index.js';
+import { getRequestAiProvider } from './ai-context.js';
 
 export const MODELS_BY_PROVIDER = {
   anthropic: [
@@ -46,8 +47,22 @@ export const MODELS = MODELS_BY_PROVIDER.anthropic;
 export const DEFAULT_MODEL = DEFAULT_MODEL_BY_PROVIDER.anthropic;
 
 export async function callClaude({ prompt, model = DEFAULT_MODEL, system = '', max_tokens = 4096, config }) {
-  const provider = getProvider(config);
-  return provider.complete({ prompt, model, system, max_tokens });
+  // A per-user key (hosted mode) belongs to a specific provider, which need not
+  // be the one named in the project's shared config. The key wins, and the model
+  // follows it — otherwise an OpenAI key gets sent a Claude model id.
+  const requestProvider = getRequestAiProvider();
+  const effectiveConfig = requestProvider ? { ...config, provider: requestProvider } : config;
+  const provider = getProvider(effectiveConfig);
+  const effectiveModel = requestProvider && requestProvider !== (config?.provider || 'anthropic')
+    ? modelForProvider(requestProvider, model)
+    : model;
+  return provider.complete({ prompt, model: effectiveModel, system, max_tokens });
+}
+
+function modelForProvider(providerId, requested) {
+  const known = getModelsFor(providerId);
+  if (known.some(m => m.id === requested)) return requested;
+  return getDefaultModelFor(providerId);
 }
 
 export function extractJson(text) {

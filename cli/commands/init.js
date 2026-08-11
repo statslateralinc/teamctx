@@ -1,6 +1,7 @@
 import { ask, askChoice } from '../prompt.js';
 import { getModelsFor, getDefaultModelFor } from '../../src/ai.js';
 import { getProviders, initProject } from './init.core.js';
+import { actorFromGit } from '../../src/actor.js';
 
 export async function initCommand() {
   console.log('\nWelcome to teamctx. Setting up your project context.\n');
@@ -8,7 +9,10 @@ export async function initCommand() {
   const project = await ask('Project name');
   if (!project) { console.error('Project name is required.'); process.exit(1); }
 
-  const me = await ask('Your name or handle (used on contributions)');
+  // Pre-filled from the git identity, which is almost always what they want and
+  // is what teammates who never run `init` will get automatically.
+  const gitActor = await actorFromGit({ cwd: process.cwd() });
+  const me = await ask('Your name or handle (used on contributions)', gitActor?.name || '');
   if (!me) { console.error('Name is required.'); process.exit(1); }
 
   const providers = getProviders();

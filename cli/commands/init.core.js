@@ -4,6 +4,8 @@ import { checkGitRepo, commitContext, pushContext } from '../../src/git.js';
 import { getModelsFor, getDefaultModelFor } from '../../src/ai.js';
 import { writeConfig, writeWorkstream, writeWorkstreamMd } from '../../src/storage.js';
 import { serializeToMd } from '../../src/context.js';
+import { resolveActor } from '../../src/actor.js';
+import { writePrefs } from '../../src/prefs.js';
 
 const PROVIDERS = [
   { id: 'anthropic', label: 'Anthropic (Claude)', envVar: 'ANTHROPIC_API_KEY' },
@@ -75,6 +77,14 @@ export async function initProject({
   writeWorkstream('main', workstream, teamctxDir);
   writeWorkstreamMd('main', serializeToMd(workstream, project), teamctxDir);
   writeFileSync(join(teamctxDir, 'contributions.jsonl'), '');
+
+  // Record the name they just chose as *their* preference, not only as the
+  // project default. Without this, the next time they contribute their git
+  // identity would silently override the handle they typed here.
+  try {
+    const actor = await resolveActor({ config, cwd: projectDir });
+    await writePrefs(actor, { name: me }, teamctxDir);
+  } catch { /* preferences are best-effort; never block init */ }
 
   await commitContext(`chore: initialize teamctx for "${project}"`, { cwd: projectDir });
 

@@ -4,10 +4,11 @@ import { generateReflection, serializeToMd, generateRoleFile } from '../../src/c
 import { preserveSourcesThroughReflect } from '../../src/provenance.js';
 import { extractJson } from '../../src/ai.js';
 import { commitContext, pushContext } from '../../src/git.js';
+import { currentIdentity } from '../identity.js';
 
 export async function reflectCommand(opts = {}) {
   const config = readConfig();
-  const targetId = opts.workstream || config.activeWorkstream || 'main';
+  const targetId = opts.workstream || (await currentIdentity(config)).activeWorkstream;
   const workstream = readWorkstream(targetId);
   const contributions = readContributions();
 

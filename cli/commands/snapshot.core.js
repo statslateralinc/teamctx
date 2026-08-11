@@ -4,9 +4,17 @@ import {
   readCurrentSnapshotPointer, writeCurrentSnapshotPointer,
 } from '../../src/storage.js';
 import { buildSnapshot, buildApproved, buildRejected, buildPointer, snapshotWorkstreams } from '../../src/snapshots.js';
-import { canApprove } from '../../src/review.js';
+import { assertManager } from './review.core.js';
 import { commitContext, pushContext } from '../../src/git.js';
-import { ManagerGateError } from './review.core.js';
+import { resolveActor } from '../../src/actor.js';
+import { resolveDisplayName } from '../../src/prefs.js';
+
+/** Who is running this command — see src/actor.js. Falls back to config.me. */
+async function currentIdentity(config, teamctxDir, projectDir) {
+  const actor = await resolveActor({ config, cwd: projectDir });
+  const displayName = await resolveDisplayName({ actor, config, teamctxDir });
+  return { actor, displayName };
+}
 
 export class SnapshotNotFoundError extends Error {
   constructor(prefix, cause) {
@@ -19,10 +27,7 @@ export class SnapshotStateError extends Error {
   constructor(msg) { super(msg); this.code = 'SNAPSHOT_STATE'; }
 }
 
-function assertManager(config, actor) {
-  const effective = actor ? { ...config, me: actor } : config;
-  if (!canApprove(effective)) throw new ManagerGateError(effective);
-}
+
 
 function collectWorkstreams(teamctxDir) {
   const config = readConfig(teamctxDir);
@@ -43,7 +48,7 @@ async function commitAndPush(config, msg, { projectDir } = {}) {
 
 export async function createSnapshot({ message, teamctxDir, projectDir, actor } = {}) {
   const config = readConfig(teamctxDir);
-  const author = actor || config.me;
+  const author = actor || (await currentIdentity(config, teamctxDir, projectDir)).displayName;
   const workstreams = collectWorkstreams(teamctxDir);
   const snapshot = buildSnapshot({ workstreams, author, message });
   writeSnapshot(snapshot, teamctxDir);
@@ -56,14 +61,16 @@ export async function createSnapshot({ message, teamctxDir, projectDir, actor } 
 
 export async function approveSnapshot({ prefix, teamctxDir, projectDir, actor } = {}) {
   const config = readConfig(teamctxDir);
-  assertManager(config, actor);
+  // Gate on the resolved identity; `actor` is a claim used only for attribution.
+  const { actor: caller, displayName } = await currentIdentity(config, teamctxDir, projectDir);
+  assertManager(config, { actor: caller, displayName });
+  const approvedBy = actor || displayName;
   let id;
   try { id = resolveSnapshotId(prefix, teamctxDir); }
   catch (err) { throw new SnapshotNotFoundError(prefix, err); }
   const snapshot = readSnapshot(id, teamctxDir);
   if (snapshot.status === 'approved') throw new SnapshotStateError(`snapshot ${id} is already approved.`);
   if (snapshot.status === 'rejected') throw new SnapshotStateError(`snapshot ${id} was rejected and cannot be approved. Create a new snapshot.`);
-  const approvedBy = actor || config.me;
   const approved = buildApproved(snapshot, approvedBy);
   writeSnapshot(approved, teamctxDir);
   writeCurrentSnapshotPointer(buildPointer(approved), teamctxDir);
@@ -75,13 +82,14 @@ export async function approveSnapshot({ prefix, teamctxDir, projectDir, actor } 
 
 export async function rejectSnapshot({ prefix, reason, teamctxDir, projectDir, actor } = {}) {
   const config = readConfig(teamctxDir);
-  assertManager(config, actor);
+  const { actor: caller, displayName } = await currentIdentity(config, teamctxDir, projectDir);
+  assertManager(config, { actor: caller, displayName });
+  const rejectedBy = actor || displayName;
   let id;
   try { id = resolveSnapshotId(prefix, teamctxDir); }
   catch (err) { throw new SnapshotNotFoundError(prefix, err); }
   const snapshot = readSnapshot(id, teamctxDir);
   if (snapshot.status !== 'pending') throw new SnapshotStateError(`snapshot ${id} has status "${snapshot.status}" — only pending snapshots can be rejected.`);
-  const rejectedBy = actor || config.me;
   const rejected = buildRejected(snapshot, rejectedBy, reason);
   writeSnapshot(rejected, teamctxDir);
   const { pushed, pushError } = await commitAndPush(

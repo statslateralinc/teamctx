@@ -13,10 +13,19 @@ import { AsyncLocalStorage } from 'async_hooks';
  */
 const store = new AsyncLocalStorage();
 
-export function runWithAiKey(apiKey, fn) {
-  return store.run({ apiKey }, fn);
+export function runWithAiKey(apiKey, fn, provider = null) {
+  return store.run({ apiKey, provider }, fn);
 }
 
 export function getRequestAiKey() {
   return store.getStore()?.apiKey || null;
+}
+
+/**
+ * The provider the caller's key belongs to, when known. A key is useless
+ * against the wrong provider, so this has to travel with it rather than being
+ * read from the project's shared config.
+ */
+export function getRequestAiProvider() {
+  return store.getStore()?.provider || null;
 }

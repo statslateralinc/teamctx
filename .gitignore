@@ -6,3 +6,6 @@ dist/
 
 # Private strategy docs — never push
 docs/private/
+
+# Per-user teamctx preferences — never shared
+.teamctx/.local/

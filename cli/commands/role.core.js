@@ -4,6 +4,16 @@ import { generateRoleFile } from '../../src/context.js';
 import { commitContext, pushContext } from '../../src/git.js';
 import { callClaude, extractJson, getFastModelFor } from '../../src/ai.js';
 
+import { resolveActor } from '../../src/actor.js';
+import { resolveActiveWorkstream } from '../../src/prefs.js';
+
+/** The caller's active workstream — their own preference, then the project default. */
+async function activeId(config, teamctxDir, projectDir) {
+  const actor = await resolveActor({ config, cwd: projectDir });
+  return resolveActiveWorkstream({ actor, config, teamctxDir });
+}
+
+
 export class UnknownRoleError extends Error {
   constructor(slug) { super(`no role "${slug}". Run \`teamctx role list\` to see options.`); this.code = 'UNKNOWN_ROLE'; }
 }
@@ -42,9 +52,9 @@ export async function suggestRoleDetails({ name, workstream, config }) {
   return { responsibilities: parsed.responsibilities || '', excludes: parsed.excludes || '' };
 }
 
-export async function suggestRoles({ workstreamId, teamctxDir } = {}) {
+export async function suggestRoles({ workstreamId, teamctxDir, projectDir } = {}) {
   const config = readConfig(teamctxDir);
-  const wsId = workstreamId || config.activeWorkstream || 'main';
+  const wsId = workstreamId || await activeId(config, teamctxDir, projectDir);
   const workstream = readWorkstream(wsId, teamctxDir);
   const suggestions = await aiSuggestRoles(workstream, config);
   return { workstreamId: wsId, suggestions };
@@ -57,7 +67,7 @@ export async function addRoleFull({
   if (!name) throw new Error('role name is required');
   if (!responsibilities) throw new Error('responsibilities are required');
   const config = readConfig(teamctxDir);
-  const wsId = workstreamId || config.activeWorkstream || 'main';
+  const wsId = workstreamId || await activeId(config, teamctxDir, projectDir);
   if (!knownWorkstreams(config, teamctxDir).has(wsId)) throw new UnknownWorkstreamError(wsId);
 
   const { slug, config: updatedConfig } = addRoleData({

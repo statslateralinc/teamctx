@@ -7,8 +7,62 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **Per-user settings.** Identity and the active workstream are now resolved
+  per person instead of being read from the committed `.teamctx/config.json`.
+  A new actor context (`src/actor.js`) resolves who is calling — the GitHub
+  account that completed OAuth on the hosted server, `git config user.name`
+  on the CLI and stdio MCP, falling back to `config.me` — and a preference
+  store (`src/prefs.js`) keeps their choices out of the repo: KV when hosted,
+  a gitignored `.teamctx/.local/prefs.json` locally.
+- `teamctx config manager --me` pins the approval gate to your own identity
+  (`managerKey`), which no one else can claim. `@login` and a raw actor key
+  also work. A project still holding a display name in `config.manager` keeps
+  working, with a warning on every gated action — that form is advisory only,
+  since anyone can set that name as their own.
+- `config_set name` / `teamctx config name` sets the display name used on your
+  own contributions. Personal: it is stored against you and never written to
+  the repo. `teamctx config name --clear` drops the override so the name is
+  derived from your identity again — and keeps following it if that identity
+  changes. (A flag rather than an empty string: PowerShell discards `""`
+  before the process sees it.)
+- Contributions now carry an `authorKey` alongside `author`, so one person is
+  counted once in the `## Contributors` roll-up even when their display name
+  differs between the CLI (git name) and the hosted server (GitHub name).
+
+### Changed
+- `workstream_use` / `teamctx workstream use` now records a personal
+  preference. It no longer writes `activeWorkstream` to the shared config, and
+  no longer creates a commit — switching workstream stopped moving everyone
+  else's default. `config.activeWorkstream` remains the project default for
+  anyone who has not switched, so existing projects behave as before.
+- `get_status` and `get_config` return `me` and `activeWorkstream` resolved
+  for the calling user, with the repo's values under `projectDefaults`.
+  `get_status.meSource` reports where the *name* came from (`override` when the
+  user set their own), and `actorSource` where the caller was authenticated.
+- `teamctx init` pre-fills the name prompt from the git identity and records
+  the chosen handle as the initializer's own preference.
+
 ### Fixed
-- `reflect` now rejects unknown workstream ids instead of creating empty workstream stubs.
+- `reflect` now rejects unknown workstream ids instead of creating empty
+  workstream stubs.
+- `teamctx pull` threw a `ReferenceError` when applying a contribution from
+  another author — it compared against an undefined `me`.
+- A saved AI provider key was applied against the provider named in the
+  project's shared config rather than the one it belongs to — an OpenAI key
+  was handed to the Anthropic client. The stored provider now travels with
+  the key, and the model follows it.
+- **The approval gate is now bound to an identity, not a display name.**
+  `canApprove` compared `config.me` against `config.manager` — two strings from
+  the same shared file — so on a multi-user deployment it let everyone through
+  or nobody, depending on who ran `init`. It now compares the authenticated
+  caller's actor key against `config.managerKey`.
+- **`review_approve` / `review_reject` / `snapshot_approve` / `snapshot_reject`
+  no longer accept an `author` argument.** It was a caller-supplied claim used
+  as the identity for the gate check, so any hosted caller could pass
+  `author: "<manager's name>"` and through. The gate now reads the
+  authenticated actor and nothing else; `author` remains on `contribute` for
+  attribution only, where it grants no authority.
 
 ## [0.3.0] - 2026-08-07
 

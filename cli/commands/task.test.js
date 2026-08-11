@@ -23,6 +23,20 @@ vi.mock('../../src/git.js', () => ({
   pushContext: vi.fn(),
 }));
 
+
+// Identity resolution shells out to git and reads a local prefs file; stub both
+// so these stay unit tests and do not pick up the developer's own git config.
+vi.mock('../../src/actor.js', () => ({
+  resolveActor: vi.fn(async () => ({ key: 'name:alice', name: 'alice', login: null, source: 'config' })),
+}));
+
+vi.mock('../../src/prefs.js', () => ({
+  readPrefs: vi.fn(async () => ({})),
+  writePrefs: vi.fn(),
+  resolveActiveWorkstream: vi.fn(async ({ config }) => config?.activeWorkstream || 'main'),
+  resolveDisplayName: vi.fn(async ({ actor, config }) => actor?.name || config?.me || 'unknown'),
+}));
+
 import {
   taskAddCommand, taskListCommand, taskShowCommand,
   taskDoneCommand, taskReopenCommand, taskAssignCommand, taskRmCommand,

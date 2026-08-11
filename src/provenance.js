@@ -80,19 +80,26 @@ function contributionIndex(contributions) {
 export function collectContributorCounts(workstream, contributions, { citedIds } = {}) {
   const byId = contributionIndex(contributions);
   const cited = citedIds instanceof Set ? citedIds : (Array.isArray(citedIds) ? new Set(citedIds) : null);
+  // Group by `authorKey` where it exists, so one person is one contributor even
+  // when their display name differs between surfaces (git name on the CLI,
+  // GitHub name on the hosted server). Contributions written before authorKey
+  // existed have only `author`, and group by that exactly as before.
   const seenPerAuthor = new Map();
   walkNodes(workstream, node => {
     for (const id of node.sourceContributionIds || []) {
       if (cited && !cited.has(id)) continue;
       const c = byId.get(id);
       if (!c || !c.author) continue;
-      let set = seenPerAuthor.get(c.author);
-      if (!set) { set = new Set(); seenPerAuthor.set(c.author, set); }
-      set.add(id);
+      const key = c.authorKey || `name:${c.author}`;
+      let entry = seenPerAuthor.get(key);
+      if (!entry) { entry = { author: c.author, ts: c.ts || '', ids: new Set() }; seenPerAuthor.set(key, entry); }
+      // Most recent contribution wins the display name.
+      if ((c.ts || '') >= entry.ts) { entry.author = c.author; entry.ts = c.ts || ''; }
+      entry.ids.add(id);
     }
   });
   const counts = [];
-  for (const [author, ids] of seenPerAuthor) {
+  for (const { author, ids } of seenPerAuthor.values()) {
     let decisions = 0;
     for (const id of ids) if (byId.get(id)?.tagged === 'decision') decisions += 1;
     counts.push({ author, total: ids.size, decisions });

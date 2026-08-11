@@ -15,13 +15,12 @@ function cliError(err) {
 }
 
 export async function workstreamSuggestCommand() {
-  const config = readConfig();
-  const activeId = config.activeWorkstream || 'main';
-  const workstream = readWorkstream(activeId);
+  // The active workstream is now per-user, so let the core resolve it rather
+  // than reading config.activeWorkstream (which is only the project default).
+  const { splits, leftover, activeId, workstream } = await suggestWorkstreamSplits();
 
-  console.log(`\n→ Analyzing workstream "${activeId}" (${workstream.whys.length} Why nodes) for candidate splits...\n`);
+  console.log(`\n→ Analyzed workstream "${activeId}" (${workstream.whys.length} Why nodes) for candidate splits...\n`);
 
-  const { splits, leftover } = await suggestWorkstreamSplits();
   if (splits.length === 0) {
     console.log('No clean split proposed. The current workstream reads as one thread.\n');
     return;
@@ -46,7 +45,7 @@ export async function workstreamSuggestCommand() {
 
 export async function workstreamListCommand() {
   const config = readConfig();
-  const workstreams = listAllWorkstreams();
+  const workstreams = await listAllWorkstreams();
   if (workstreams.length === 0) {
     console.log('No workstreams yet. Run `teamctx init`.\n');
     return;
@@ -124,7 +123,7 @@ export async function workstreamSplitCommand(opts = {}) {
 }
 
 export async function workstreamUseCommand(id) {
-  try { useWorkstream({ id }); }
+  try { await useWorkstream({ id }); }
   catch (err) { cliError(err); return; }
-  console.log(`✓ Active workstream is now "${id}".`);
+  console.log(`✓ Your active workstream is now "${id}". (Personal setting — not committed.)`);
 }

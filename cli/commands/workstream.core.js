@@ -6,6 +6,14 @@ import { proposeSubworkstreams, serializeToMd, generateRoleFile } from '../../sr
 import { commitContext, pushContext } from '../../src/git.js';
 import { slugify } from '../../src/roles.js';
 import { UnknownWorkstreamError } from './role.core.js';
+import { resolveActor } from '../../src/actor.js';
+import { resolveActiveWorkstream, writePrefs } from '../../src/prefs.js';
+
+/** The caller's active workstream — their own preference, then the project default. */
+async function activeId(config, teamctxDir, projectDir) {
+  const actor = await resolveActor({ config, cwd: projectDir });
+  return resolveActiveWorkstream({ actor, config, teamctxDir });
+}
 
 export class WorkstreamSplitError extends Error {
   constructor(msg) { super(msg); this.code = 'WORKSTREAM_SPLIT'; }
@@ -22,9 +30,9 @@ async function commitAndOptionallyPush(config, msg, projectDir) {
   catch (err) { return { pushed: false, pushError: err.message?.split('\n')[0] || err.stderr?.trim() || 'no remote?' }; }
 }
 
-export function listAllWorkstreams({ teamctxDir } = {}) {
+export async function listAllWorkstreams({ teamctxDir, projectDir } = {}) {
   const config = readConfig(teamctxDir);
-  const activeId = config.activeWorkstream || 'main';
+  const active = await activeId(config, teamctxDir, projectDir);
   const declared = config.workstreams || [];
   const onDisk = new Set(listWorkstreamIds(teamctxDir));
   const ids = Array.from(new Set([...declared.map(w => w.id), ...onDisk])).sort();
@@ -35,17 +43,17 @@ export function listAllWorkstreams({ teamctxDir } = {}) {
     return {
       id,
       name: meta?.name || ws.name || id,
-      isActive: id === activeId,
+      isActive: id === active,
       whyCount: ws.whys?.length || 0,
       roles,
     };
   });
 }
 
-export async function suggestWorkstreamSplits({ teamctxDir } = {}) {
+export async function suggestWorkstreamSplits({ teamctxDir, projectDir } = {}) {
   const config = readConfig(teamctxDir);
-  const activeId = config.activeWorkstream || 'main';
-  const workstream = readWorkstream(activeId, teamctxDir);
+  const active = await activeId(config, teamctxDir, projectDir);
+  const workstream = readWorkstream(active, teamctxDir);
   const { splits, leftover } = await proposeSubworkstreams(workstream, config, config.roles || []);
   const enriched = splits.map(s => ({
     name: s.name,
@@ -54,7 +62,7 @@ export async function suggestWorkstreamSplits({ teamctxDir } = {}) {
     whys: s.whyIds.map(id => workstream.whys.find(w => w.id === id)).filter(Boolean),
   }));
   const leftoverWhys = leftover.map(id => workstream.whys.find(w => w.id === id)).filter(Boolean);
-  return { activeId, workstream, splits: enriched, leftover: leftoverWhys };
+  return { activeId: active, workstream, splits: enriched, leftover: leftoverWhys };
 }
 
 async function applySplit({ source, sourceId, split, moveRoleSlugs, config, teamctxDir }) {
@@ -106,33 +114,40 @@ export async function splitWorkstreams({ accepted, teamctxDir, projectDir } = {}
     throw new WorkstreamSplitError('accepted must be a non-empty array of splits.');
   }
   const config = readConfig(teamctxDir);
-  const activeId = config.activeWorkstream || 'main';
-  const source = readWorkstream(activeId, teamctxDir);
+  const active = await activeId(config, teamctxDir, projectDir);
+  const source = readWorkstream(active, teamctxDir);
   if ((source.whys || []).length < 2) {
-    throw new WorkstreamSplitError(`workstream "${activeId}" has fewer than 2 Why nodes — nothing to split.`);
+    throw new WorkstreamSplitError(`workstream "${active}" has fewer than 2 Why nodes — nothing to split.`);
   }
 
   const results = [];
   for (const split of accepted) {
     const fresh = readConfig(teamctxDir);
-    const src = readWorkstream(activeId, teamctxDir);
+    const src = readWorkstream(active, teamctxDir);
     const r = await applySplit({
-      source: src, sourceId: activeId, split,
+      source: src, sourceId: active, split,
       moveRoleSlugs: split.moveRoles || [],
       config: fresh, teamctxDir,
     });
     const finalConfig = readConfig(teamctxDir);
     const { pushed, pushError } = await commitAndOptionallyPush(
-      finalConfig, `workstream: split "${split.name}" from ${activeId}`, projectDir,
+      finalConfig, `workstream: split "${split.name}" from ${active}`, projectDir,
     );
     results.push({ ...r, splitName: split.name, pushed, pushError });
   }
-  return { sourceId: activeId, results };
+  return { sourceId: active, results };
 }
 
-export function useWorkstream({ id, teamctxDir } = {}) {
+/**
+ * Switching workstream is a personal act, so it writes to the caller's
+ * preferences rather than the shared config — no repo write, no commit, and no
+ * effect on anyone else. `config.activeWorkstream` stays as the project default
+ * for people who have never switched.
+ */
+export async function useWorkstream({ id, teamctxDir, projectDir } = {}) {
   const config = readConfig(teamctxDir);
   if (!knownWorkstreams(config, teamctxDir).has(id)) throw new UnknownWorkstreamError(id);
-  writeConfig({ ...config, activeWorkstream: id }, teamctxDir);
-  return { activeWorkstream: id };
+  const actor = await resolveActor({ config, cwd: projectDir });
+  await writePrefs(actor, { activeWorkstream: id }, teamctxDir);
+  return { activeWorkstream: id, actor: actor.name };
 }

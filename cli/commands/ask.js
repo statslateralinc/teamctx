@@ -1,5 +1,6 @@
 import { readConfig, readWorkstreamMd, readRoleFile, readWorkstream, readContributions, listTasks } from '../../src/storage.js';
 import { answerQuestion } from '../../src/context.js';
+import { currentIdentity } from '../identity.js';
 
 export async function askCommand(question, opts) {
   const config = readConfig();
@@ -16,7 +17,7 @@ export async function askCommand(question, opts) {
     targetWorkstreamId = role.workstream || 'main';
   }
 
-  const resolvedId = opts.workstream || targetWorkstreamId || config.activeWorkstream || 'main';
+  const resolvedId = opts.workstream || targetWorkstreamId || (await currentIdentity(config)).activeWorkstream;
   const sharedMd = readWorkstreamMd(resolvedId);
   const workstream = readWorkstream(resolvedId);
   const contributions = readContributions();

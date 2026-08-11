@@ -1,5 +1,8 @@
 import { readConfig, writeConfig } from '../../src/storage.js';
 import { getModelsFor, getDefaultModelFor } from '../../src/ai.js';
+import { resolveActor } from '../../src/actor.js';
+import { setConfig } from './config.core.js';
+import { writePrefs, resolveDisplayName, resolveIdentity } from '../../src/prefs.js';
 
 const ALIASES = {
   opus: 'claude-opus-4-7',
@@ -88,26 +91,36 @@ export async function configGithubRawBaseCommand(value) {
   console.log(`✓ githubRawBase set to ${value}`);
 }
 
-export async function configManagerCommand(value) {
+/**
+ * Who may approve or reject.
+ *
+ * Pinned to a stable identity, not a display name: display names are settable
+ * by their owner (`teamctx config name`), so gating on one lets anyone claim
+ * the manager's name and pass.
+ */
+export async function configManagerCommand(value, opts = {}) {
   const config = readConfig();
-  if (!value) {
-    console.log(`\nCurrent manager: ${config.manager || '(not set — solo mode: anyone can approve/reject)'}`);
-    console.log(`Your identity (config.me): ${config.me}`);
-    console.log('\nUsage: teamctx config manager <name>');
-    console.log('Set to your `config.me` value to enable the approval gate.');
-    console.log('Set to "" (empty) to disable the gate (solo mode).');
+  const actor = await resolveActor({ config });
+
+  if (value === undefined && !opts.me && !opts.clear) {
+    const gate = config.managerKey
+      ? `${config.managerKey} (identity — secure)`
+      : (config.manager ? `${config.manager} (display name — advisory only)` : '(not set — anyone can approve/reject)');
+    console.log(`\nCurrent manager gate: ${gate}`);
+    console.log(`Your identity: ${actor.key}`);
+    console.log('\nUsage: teamctx config manager --me        # pin the gate to you');
+    console.log('       teamctx config manager @githublogin');
+    console.log('       teamctx config manager --clear');
+    if (config.manager && !config.managerKey) {
+      console.log('\nWarning: a display name is not a secure gate — anyone can set that');
+      console.log('name as their own with `teamctx config name`. Re-pin it with --me.');
+    }
     return;
   }
-  const next = value === '""' || value === "''" ? '' : value;
-  writeConfig({ ...config, manager: next });
-  if (!next) {
-    console.log('✓ Manager gate cleared (solo mode: anyone can approve/reject).');
-  } else {
-    console.log(`✓ Manager set to ${next}. Only this identity may approve/reject pending contributions.`);
-    if (config.me !== next) {
-      console.log(`Note: your current identity (${config.me}) will no longer be able to approve/reject.`);
-    }
-  }
+
+  const requested = opts.clear ? '' : (opts.me ? '--me' : value);
+  const r = await setConfig({ key: 'manager', value: requested });
+  console.log(`✓ ${r.notes.join(' ')}`);
 }
 
 export async function configManagerEmailCommand(value) {
@@ -131,4 +144,42 @@ export async function configDeployUrlCommand(value) {
   }
   writeConfig({ ...config, deployUrl: value });
   console.log(`✓ deployUrl set to ${value}`);
+}
+
+
+/**
+ * Your display name on contributions. Personal, not project-wide: it is stored
+ * against you under .teamctx/.local/ and never committed, so setting it does
+ * not rename anyone else.
+ */
+export async function configNameCommand(value, opts = {}) {
+  const config = readConfig();
+  const actor = await resolveActor({ config });
+
+  // `--clear` rather than an empty string: PowerShell drops `""` before the
+  // process ever sees it, so an empty argument is indistinguishable from no
+  // argument at all and there was no way to clear the override on Windows.
+  const clearing = opts.clear === true
+    || value === '""' || value === "''"
+    || (value !== undefined && String(value).trim() === '');
+
+  if (value === undefined && !clearing) {
+    const current = await resolveIdentity({ actor, config });
+    console.log(`\nYour name on contributions: ${current.name} (from: ${current.source})`);
+    console.log('\nUsage: teamctx config name <your name>');
+    console.log('       teamctx config name --clear   — drop the override and derive it again');
+    return;
+  }
+
+  // Clearing removes the preference rather than storing a blank, so the name
+  // is derived again — and keeps following the identity if it changes.
+  const next = clearing ? '' : String(value).trim();
+  if (!next) {
+    await writePrefs(actor, { name: null }, undefined);
+    const restored = await resolveIdentity({ actor, config });
+    console.log(`✓ Override cleared — your name is derived again: ${restored.name} (from: ${restored.source})`);
+    return;
+  }
+  await writePrefs(actor, { name: next }, undefined);
+  console.log(`✓ Your name is now "${next}". (Personal setting — not committed.)`);
 }

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { applyQueueItem, buildRejected, canApprove } from './review.js';
+import { applyQueueItem, buildRejected, canApprove, matchesActor, isLegacyManagerRef } from './review.js';
 
 const emptyWorkstream = () => ({ id: 'main', name: 'Demo', whys: [] });
 
@@ -58,17 +58,76 @@ describe('buildRejected', () => {
   });
 });
 
+const ALICE = { key: 'github:1001', name: 'Alice', login: 'alice' };
+const BOB = { key: 'github:2002', name: 'Bob', login: 'bob' };
+
+describe('matchesActor', () => {
+  it('matches on the stable actor key', () => {
+    expect(matchesActor('github:1001', ALICE)).toBe(true);
+    expect(matchesActor('github:2002', ALICE)).toBe(false);
+    expect(matchesActor('GitHub:1001', ALICE)).toBe(true);
+  });
+
+  it('matches on a GitHub login', () => {
+    expect(matchesActor('@alice', ALICE)).toBe(true);
+    expect(matchesActor('@Alice', ALICE)).toBe(true);
+    expect(matchesActor('@bob', ALICE)).toBe(false);
+  });
+
+  it('never matches a bare display name', () => {
+    // The point of the whole change: display names are settable by their owner,
+    // so they must not be a credential.
+    expect(matchesActor('Alice', ALICE)).toBe(false);
+  });
+
+  it('handles missing inputs', () => {
+    expect(matchesActor('', ALICE)).toBe(false);
+    expect(matchesActor('github:1001', null)).toBe(false);
+    expect(matchesActor('@alice', { key: 'git:a@b.com' })).toBe(false);
+  });
+});
+
 describe('canApprove', () => {
-  it('returns true when manager is unset (solo mode)', () => {
-    expect(canApprove({ me: 'alice' })).toBe(true);
-    expect(canApprove({ me: 'alice', manager: '' })).toBe(true);
+  it('returns true when no gate is configured', () => {
+    expect(canApprove({}, { actor: ALICE })).toBe(true);
+    expect(canApprove({ manager: '' }, { actor: ALICE })).toBe(true);
   });
 
-  it('returns true when me matches manager', () => {
-    expect(canApprove({ me: 'alice', manager: 'alice' })).toBe(true);
+  it('matches the pinned identity', () => {
+    const config = { managerKey: 'github:1001' };
+    expect(canApprove(config, { actor: ALICE })).toBe(true);
+    expect(canApprove(config, { actor: BOB })).toBe(false);
   });
 
-  it('returns false when me differs from manager', () => {
-    expect(canApprove({ me: 'bob', manager: 'alice' })).toBe(false);
+  it('refuses a display name that impersonates the manager', () => {
+    // Bob sets his own name to "Alice" — this must not pass.
+    const config = { managerKey: 'github:1001' };
+    expect(canApprove(config, { actor: BOB, displayName: 'Alice' })).toBe(false);
+  });
+
+  it('refuses when the caller cannot be identified at all', () => {
+    expect(canApprove({ managerKey: 'github:1001' }, { displayName: 'Alice' })).toBe(false);
+    expect(canApprove({ managerKey: 'github:1001' }, {})).toBe(false);
+  });
+
+  it('still honours a legacy display-name gate', () => {
+    // Existing projects store a name; they keep working rather than locking out.
+    const config = { manager: 'alice' };
+    expect(canApprove(config, { actor: ALICE, displayName: 'alice' })).toBe(true);
+    expect(canApprove(config, { actor: BOB, displayName: 'bob' })).toBe(false);
+  });
+
+  it('prefers the pinned identity over a stale legacy name', () => {
+    const config = { managerKey: 'github:1001', manager: 'bob' };
+    expect(canApprove(config, { actor: ALICE, displayName: 'alice' })).toBe(true);
+    expect(canApprove(config, { actor: BOB, displayName: 'bob' })).toBe(false);
+  });
+});
+
+describe('isLegacyManagerRef', () => {
+  it('flags a name-only gate so callers can warn', () => {
+    expect(isLegacyManagerRef({ manager: 'alice' })).toBe(true);
+    expect(isLegacyManagerRef({ managerKey: 'github:1', manager: 'alice' })).toBe(false);
+    expect(isLegacyManagerRef({})).toBe(false);
   });
 });

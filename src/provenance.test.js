@@ -187,3 +187,58 @@ describe('formatAuditBlock', () => {
     expect(formatAuditBlock({ sources: [], unknown: [] })).toBe('');
   });
 });
+
+
+describe('collectContributorCounts — identity across surfaces', () => {
+  const ws = {
+    whys: [{
+      id: 'w1', text: 'why', sourceContributionIds: ['k-1', 'k-2', 'k-3'],
+      whats: [],
+    }],
+  };
+
+  it('counts one person once even when their display name differs per surface', () => {
+    // Same human: git name from the CLI, GitHub name from the hosted server.
+    const contribs = [
+      { id: 'k-1', author: 'Satyagya Singh', authorKey: 'github:42', ts: '2026-06-01T00:00:00Z' },
+      { id: 'k-2', author: 'satya',          authorKey: 'github:42', ts: '2026-06-02T00:00:00Z' },
+      { id: 'k-3', author: 'other',          authorKey: 'github:99', ts: '2026-06-03T00:00:00Z' },
+    ];
+    const counts = collectContributorCounts(ws, contribs);
+    expect(counts).toHaveLength(2);
+    expect(counts.find(c => c.total === 2)).toMatchObject({ author: 'satya', total: 2 });
+  });
+
+  it('uses the most recent display name for a key', () => {
+    const contribs = [
+      { id: 'k-1', author: 'old name', authorKey: 'github:42', ts: '2026-06-01T00:00:00Z' },
+      { id: 'k-2', author: 'new name', authorKey: 'github:42', ts: '2026-07-01T00:00:00Z' },
+      { id: 'k-3', author: 'new name', authorKey: 'github:42', ts: '2026-06-15T00:00:00Z' },
+    ];
+    expect(collectContributorCounts(ws, contribs)[0].author).toBe('new name');
+  });
+
+  it('groups legacy contributions by author, exactly as before', () => {
+    // Written before authorKey existed — no key to group on.
+    const contribs = [
+      { id: 'k-1', author: 'alice', ts: '2026-06-01T00:00:00Z' },
+      { id: 'k-2', author: 'alice', ts: '2026-06-02T00:00:00Z' },
+      { id: 'k-3', author: 'bob',   ts: '2026-06-03T00:00:00Z' },
+    ];
+    const counts = collectContributorCounts(ws, contribs);
+    expect(counts).toEqual([
+      { author: 'alice', total: 2, decisions: 0 },
+      { author: 'bob', total: 1, decisions: 0 },
+    ]);
+  });
+
+  it('keeps a keyed and an unkeyed contribution apart', () => {
+    // We cannot prove they are the same person, so we must not merge them.
+    const contribs = [
+      { id: 'k-1', author: 'alice', ts: '2026-06-01T00:00:00Z' },
+      { id: 'k-2', author: 'alice', authorKey: 'github:42', ts: '2026-06-02T00:00:00Z' },
+      { id: 'k-3', author: 'bob', ts: '2026-06-03T00:00:00Z' },
+    ];
+    expect(collectContributorCounts(ws, contribs)).toHaveLength(3);
+  });
+});

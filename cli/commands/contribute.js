@@ -2,12 +2,15 @@ import { ask } from '../prompt.js';
 import { readConfig, readWorkstream, writeWorkstream, writeWorkstreamMd, appendContribution, writeRoleFile, writeQueueItem, readContributions, listWorkstreamIds } from '../../src/storage.js';
 import { updateShared, generateRoleFile, serializeToMd } from '../../src/context.js';
 import { commitContext, pushContext } from '../../src/git.js';
+import { currentIdentity } from '../identity.js';
 
-function newContribution(text, author, tagged, source, workstream) {
+function newContribution(text, author, authorKey, tagged, source, workstream) {
   return {
     id: `c-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
     ts: new Date().toISOString(),
     author,
+    // Stable identity behind the display name — see cli/identity.js.
+    ...(authorKey ? { authorKey } : {}),
     text,
     tagged: tagged || null,
     source: source || 'cli',
@@ -22,7 +25,8 @@ function workstreamDisplayName(id, workstream, config) {
 
 export async function contributeCommand(text, opts) {
   const config = readConfig();
-  const targetId = opts.workstream || config.activeWorkstream || 'main';
+  const { me, authorKey, activeWorkstream } = await currentIdentity(config);
+  const targetId = opts.workstream || activeWorkstream;
   const known = new Set([
     ...(config.workstreams || []).map(w => w.id),
     ...listWorkstreamIds(),
@@ -33,11 +37,11 @@ export async function contributeCommand(text, opts) {
   }
   const workstream = readWorkstream(targetId);
   const tagged = opts.decision ? 'decision' : null;
-  const contribution = newContribution(text, config.me, tagged, opts.source, targetId);
+  const contribution = newContribution(text, me, authorKey, tagged, opts.source, targetId);
 
   appendContribution(contribution);
   const wsLabel = targetId === 'main' ? '' : ` [workstream: ${targetId}]`;
-  console.log(`\n→ Processing contribution from ${config.me}${wsLabel}...`);
+  console.log(`\n→ Processing contribution from ${me}${wsLabel}...`);
 
   const { workstream: updated, summary, operations } = await updateShared(workstream, contribution, config);
 
@@ -77,7 +81,7 @@ export async function contributeCommand(text, opts) {
       operations,
     });
 
-    await commitContext(`queue: ${config.me} submission pending approval (${contribution.id})`);
+    await commitContext(`queue: ${me} submission pending approval (${contribution.id})`);
 
     if (config.autoPush) {
       try {
@@ -95,7 +99,7 @@ export async function contributeCommand(text, opts) {
 
   writeWorkstream(targetId, updated);
   const contributions = readContributions();
-  writeWorkstreamMd(targetId, serializeToMd(updated, workstreamDisplayName(targetId, updated, config), config.me, contributions));
+  writeWorkstreamMd(targetId, serializeToMd(updated, workstreamDisplayName(targetId, updated, config), me, contributions));
 
   const rolesOnTarget = (config.roles || []).filter(r => (r.workstream || 'main') === targetId);
   if (rolesOnTarget.length > 0) {
@@ -109,7 +113,7 @@ export async function contributeCommand(text, opts) {
 
   const note = tagged === 'decision' ? ' [decision]' : '';
   const wsNote = targetId === 'main' ? '' : ` (${targetId})`;
-  await commitContext(`context: ${config.me} contribution${note}${wsNote}`);
+  await commitContext(`context: ${me} contribution${note}${wsNote}`);
 
   if (config.autoPush) {
     try { await pushContext(); console.log('\n✓ Committed and pushed.'); }

@@ -42,6 +42,29 @@ vi.mock('../src/git.js', () => ({
   pushContext: vi.fn(),
 }));
 
+// Identity and preferences are resolved from the environment (git subprocess,
+// KV, a local file). Stub them so these stay unit tests.
+vi.mock('../src/actor.js', () => ({
+  resolveActor: vi.fn(async () => ({ key: 'git:alice@example.com', name: 'alice', login: null, source: 'git' })),
+  actorFromGithubUser: vi.fn(),
+  actorFromGit: vi.fn(),
+  actorFromConfig: vi.fn(),
+  runWithActor: vi.fn((seed, fn) => fn()),
+  peekActor: vi.fn(() => null),
+}));
+
+vi.mock('../src/prefs.js', () => ({
+  readPrefs: vi.fn(async () => ({})),
+  writePrefs: vi.fn(async (actor, patch) => patch),
+  resolveActiveWorkstream: vi.fn(async ({ config }) => config?.activeWorkstream || 'main'),
+  resolveDisplayName: vi.fn(async ({ actor, config }) => actor?.name || config?.me || 'unknown'),
+  resolveIdentity: vi.fn(async ({ actor, config }) => ({
+    name: actor?.name || config?.me || 'unknown',
+    source: actor?.source || 'config',
+  })),
+  ensureGitignored: vi.fn(),
+}));
+
 import { TOOLS, makeHandlers, buildServer, resolveProjectDir } from './server.js';
 import {
   getTeamctxDir,
@@ -53,6 +76,7 @@ import {
 import { updateShared, generateRoleFile, answerQuestion } from '../src/context.js';
 import { migrateIfNeeded } from '../src/migrate.js';
 import { commitContext, pushContext } from '../src/git.js';
+import { writePrefs } from '../src/prefs.js';
 
 const baseWs = { id: 'main', name: 'Demo', whys: [] };
 const baseConfig = { project: 'Demo', me: 'alice', model: 'claude-sonnet-4-6', roles: [], autoPush: false, workstreams: [{ id: 'main', name: 'Demo' }] };
@@ -117,7 +141,9 @@ describe('TOOLS list', () => {
   });
 
   it('every Tier 2 (risky) tool warns in its description', () => {
-    const risky = ['init', 'role_add', 'role_assign', 'workstream_split', 'workstream_use',
+    // workstream_use is deliberately absent: it now writes only the caller's own
+    // preference, touching neither the repo nor anyone else's view.
+    const risky = ['init', 'role_add', 'role_assign', 'workstream_split',
                    'review_approve', 'review_reject', 'snapshot_create', 'snapshot_approve',
                    'snapshot_reject', 'reflect', 'config_set'];
     for (const name of risky) {
@@ -452,26 +478,38 @@ describe('contribute (new tool)', () => {
 });
 
 describe('review_approve (manager-gated)', () => {
-  const configWithManager = { ...baseConfig, manager: 'boss', me: 'alice', activeWorkstream: 'main', workstreams: [{ id: 'main' }], roles: [] };
+  // The mocked actor is alice, key git:alice@example.com — see the actor mock.
+  const gatedToSomeoneElse = { ...baseConfig, managerKey: 'github:9999', me: 'alice', activeWorkstream: 'main', workstreams: [{ id: 'main' }], roles: [] };
+  const gatedToCaller = { ...baseConfig, managerKey: 'git:alice@example.com', me: 'alice', activeWorkstream: 'main', workstreams: [{ id: 'main' }], roles: [] };
 
-  it('refuses when caller is not the manager', async () => {
-    readConfig.mockReturnValue(configWithManager);
+  it('refuses when the caller is not the pinned manager', async () => {
+    readConfig.mockReturnValue(gatedToSomeoneElse);
     const handlers = makeHandlers(ROOT);
-    await expect(handlers.review_approve({ id: 'q-1', author: 'alice' }))
+    await expect(handlers.review_approve({ id: 'q-1' }))
       .rejects.toThrow(/only the configured manager/);
     expect(readQueueItem).not.toHaveBeenCalled();
   });
 
-  it('proceeds when caller matches the manager', async () => {
-    readConfig.mockReturnValue(configWithManager);
+  it('cannot be bypassed by claiming to be the manager', async () => {
+    // The whole point: `author` is no longer accepted, and even if a client
+    // sends it the gate reads the authenticated actor instead.
+    readConfig.mockReturnValue(gatedToSomeoneElse);
+    const handlers = makeHandlers(ROOT);
+    await expect(handlers.review_approve({ id: 'q-1', author: 'the-manager' }))
+      .rejects.toThrow(/only the configured manager/);
+    expect(readQueueItem).not.toHaveBeenCalled();
+  });
+
+  it('proceeds when the caller is the pinned manager', async () => {
+    readConfig.mockReturnValue(gatedToCaller);
     readQueueItem.mockReturnValue({ id: 'q-1', workstream: 'main', author: 'alice', operations: [{ type: 'addWhy', text: 't', summary: 's' }] });
     readWorkstream.mockReturnValue(baseWs);
     const handlers = makeHandlers(ROOT);
-    const result = await handlers.review_approve({ id: 'q-1', author: 'boss' });
+    const result = await handlers.review_approve({ id: 'q-1' });
     expect(writeWorkstream).toHaveBeenCalled();
     expect(deleteQueueItem).toHaveBeenCalled();
     const payload = JSON.parse(result.content[0].text);
-    expect(payload.approvedBy).toBe('boss');
+    expect(payload.approvedBy).toBe('alice');
     expect(payload.reportBack).toMatch(/approved contribution q-1/);
   });
 
@@ -487,7 +525,8 @@ describe('review_approve (manager-gated)', () => {
 
 describe('snapshot_create + snapshot_approve', () => {
   it('creates and approves through manager gate', async () => {
-    readConfig.mockReturnValue({ ...baseConfig, manager: 'boss', workstreams: [{ id: 'main' }], roles: [] });
+    // Pinned to someone other than the mocked caller (alice).
+    readConfig.mockReturnValue({ ...baseConfig, managerKey: 'github:9999', workstreams: [{ id: 'main' }], roles: [] });
     readWorkstream.mockReturnValue(baseWs);
     listWorkstreamIds.mockReturnValue([]);
 
@@ -499,19 +538,30 @@ describe('snapshot_create + snapshot_approve', () => {
     expect(createdPayload.reportBack).toMatch(/manager must approve/);
 
     readSnapshot.mockReturnValue({ id: 'snap-1', status: 'pending', workstreams: [{ id: 'main', tree: baseWs }] });
-    await expect(handlers.snapshot_approve({ id: 'snap-1', author: 'alice' }))
+    await expect(handlers.snapshot_approve({ id: 'snap-1' }))
       .rejects.toThrow(/only the configured manager/);
-    await handlers.snapshot_approve({ id: 'snap-1', author: 'boss' });
+    // Claiming the manager's name does not help either.
+    await expect(handlers.snapshot_approve({ id: 'snap-1', author: 'the-manager' }))
+      .rejects.toThrow(/only the configured manager/);
+
+    readConfig.mockReturnValue({ ...baseConfig, managerKey: 'git:alice@example.com', workstreams: [{ id: 'main' }], roles: [] });
+    await handlers.snapshot_approve({ id: 'snap-1' });
     expect(writeSnapshot).toHaveBeenCalledTimes(2);
   });
 });
 
 describe('workstream_use', () => {
-  it('writes the activeWorkstream and returns a reportBack', async () => {
+  it('stores the choice as a personal preference, not in the shared config', async () => {
     readConfig.mockReturnValue({ ...baseConfig, workstreams: [{ id: 'main' }, { id: 'tech' }], roles: [] });
     const handlers = makeHandlers(ROOT);
     const result = await handlers.workstream_use({ id: 'tech' });
-    expect(writeConfig).toHaveBeenCalledWith(expect.objectContaining({ activeWorkstream: 'tech' }), TDIR);
+    expect(writePrefs).toHaveBeenCalledWith(
+      expect.objectContaining({ key: 'git:alice@example.com' }),
+      { activeWorkstream: 'tech' },
+      TDIR,
+    );
+    // The whole point: switching must not write to the file everyone shares.
+    expect(writeConfig).not.toHaveBeenCalled();
     expect(JSON.parse(result.content[0].text).reportBack).toMatch(/active workstream is now "tech"/);
   });
 
@@ -550,5 +600,27 @@ describe('get_config redaction', () => {
     const payload = JSON.parse(result.content[0].text);
     expect(payload.project).toBe('Demo');
     expect(payload.apiKey).toBeUndefined();
+  });
+});
+
+
+describe('config_set — personal keys', () => {
+  it('reports a cleared override as cleared, not as a set', async () => {
+    // A client that surfaces only reportBack would otherwise tell the user
+    // their name was set to the value they just stopped overriding.
+    readConfig.mockReturnValue({ ...baseConfig, roles: [] });
+    const handlers = makeHandlers(ROOT);
+    const r = JSON.parse((await handlers.config_set({ key: 'name', value: '' })).content[0].text);
+    expect(r.cleared).toBe(true);
+    expect(r.reportBack).toMatch(/override cleared/);
+    expect(r.reportBack).not.toMatch(/set to/);
+  });
+
+  it('reports a set as a set', async () => {
+    readConfig.mockReturnValue({ ...baseConfig, roles: [] });
+    const handlers = makeHandlers(ROOT);
+    const r = JSON.parse((await handlers.config_set({ key: 'name', value: 'satya' })).content[0].text);
+    expect(r.cleared).toBe(false);
+    expect(r.reportBack).toMatch(/config\.name set to "satya"/);
   });
 });

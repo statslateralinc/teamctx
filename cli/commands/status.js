@@ -1,7 +1,12 @@
 import { readConfig, readWorkstream, listWorkstreamIds, readContributions, listTasks } from '../../src/storage.js';
+import { resolveActor } from '../../src/actor.js';
+import { resolveActiveWorkstream, resolveIdentity } from '../../src/prefs.js';
 
 export async function statusCommand() {
   const config = readConfig();
+  const actor = await resolveActor({ config });
+  const identity = await resolveIdentity({ actor, config });
+  const activeWorkstream = await resolveActiveWorkstream({ actor, config });
   const contributions = readContributions();
   const decisions = contributions.filter(c => c.tagged === 'decision');
 
@@ -17,13 +22,14 @@ export async function statusCommand() {
   const compiledTasks = allTasks.filter(t => t.compiledAt).length;
 
   console.log(`\n${config.project} — teamctx status\n`);
+  console.log(`  You:          ${identity.name} (${identity.source})`);
   console.log(`  Model:        ${config.model}`);
   console.log(`  Provider:     ${config.provider || 'anthropic'}`);
   console.log(`  Auto-push:    ${config.autoPush ? 'on' : 'off'}`);
   console.log(`  Why nodes:    ${totalWhys} across ${workstreams.length} workstream${workstreams.length !== 1 ? 's' : ''}`);
   if (workstreams.length > 1) {
     workstreams.forEach(w => {
-      const active = w.id === config.activeWorkstream ? ' (active)' : '';
+      const active = w.id === activeWorkstream ? ' (active)' : '';
       console.log(`    - ${w.id.padEnd(20)} ${w.tree.whys?.length || 0} Why nodes${active}`);
     });
   }

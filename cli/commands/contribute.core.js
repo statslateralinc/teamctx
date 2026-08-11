@@ -3,13 +3,20 @@ import { updateShared, generateRoleFile, serializeToMd } from '../../src/context
 import { commitContext, pushContext } from '../../src/git.js';
 import { UnknownWorkstreamError } from './role.core.js';
 import { assertManager } from './review.core.js';
+import { resolveActor } from '../../src/actor.js';
+import { resolveActiveWorkstream, resolveDisplayName } from '../../src/prefs.js';
 
-function newContribution({ text, author, tagged, source, workstream }) {
+function newContribution({ text, author, authorKey, tagged, source, workstream }) {
   const idPrefix = source === 'mcp' ? 'mcp' : 'c';
   return {
     id: `${idPrefix}-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
     ts: new Date().toISOString(),
     author,
+    // Stable identity behind the display name, so the same person contributing
+    // from the CLI (git name) and from the hosted server (GitHub name) is not
+    // counted as two contributors. Absent on contributions written before this
+    // existed — readers fall back to `author`.
+    ...(authorKey ? { authorKey } : {}),
     text,
     tagged: tagged || null,
     source: source || 'cli',
@@ -35,9 +42,20 @@ export async function contributeCore({
 } = {}) {
   if (!text) throw new Error('contribution text is required');
   const config = readConfig(teamctxDir);
-  const actor = author || config.me;
-  if (apply) assertManager(config, { actor });
-  const targetId = workstreamId || config.activeWorkstream || 'main';
+  // An explicit `author` still wins — scripts and imports rely on it. Otherwise
+  // the contribution is attributed to whoever is actually calling, not to the
+  // `config.me` baked into the repo when someone ran `init`.
+  const resolved = await resolveActor({ config, cwd: projectDir });
+  const resolvedName = await resolveDisplayName({ actor: resolved, config, teamctxDir });
+  const actor = author || resolvedName;
+  const authorKey = author ? null : resolved.key;
+  // apply=true writes straight to shared context, so it is gated. Both arguments
+  // must come from the resolution, never from `author`: on a project still using
+  // the legacy name gate, passing the caller's claimed name here would let
+  // `contribute({ apply: true, author: "<manager>" })` walk straight through.
+  if (apply) assertManager(config, { actor: resolved, displayName: resolvedName });
+  const targetId = workstreamId
+    || await resolveActiveWorkstream({ actor: resolved, config, teamctxDir });
   const known = new Set([
     ...(config.workstreams || []).map(w => w.id),
     ...listWorkstreamIds(teamctxDir),
@@ -46,7 +64,7 @@ export async function contributeCore({
 
   const workstream = readWorkstream(targetId, teamctxDir);
   const tagged = decision ? 'decision' : null;
-  const contribution = newContribution({ text, author: actor, tagged, source, workstream: targetId });
+  const contribution = newContribution({ text, author: actor, authorKey, tagged, source, workstream: targetId });
   appendContribution(contribution, teamctxDir);
 
   const { workstream: updated, summary, operations } = await updateShared(workstream, contribution, config);

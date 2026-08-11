@@ -31,6 +31,8 @@ import {
 import { contributeCore } from '../cli/commands/contribute.core.js';
 import { reflectWorkstream } from '../cli/commands/reflect.core.js';
 import { getConfig, setConfig } from '../cli/commands/config.core.js';
+import { resolveActor } from '../src/actor.js';
+import { resolveActiveWorkstream, resolveIdentity } from '../src/prefs.js';
 
 export function resolveProjectDir(argv = process.argv.slice(2), env = process.env, cwd = process.cwd()) {
   const flagIdx = argv.findIndex(a => a === '--project' || a === '-p');
@@ -105,12 +107,12 @@ export const TOOLS = [
   },
   {
     name: 'get_status',
-    description: 'Return the teamctx project status: project name, provider, model, manager identity, workstreams with why-counts, roles, contribution/decision totals.',
+    description: "Return the teamctx project status: project name, provider, model, manager identity, workstreams with why-counts, roles, contribution/decision totals. `me` and `activeWorkstream` are the calling user's, not the project defaults.",
     inputSchema: { type: 'object', properties: {}, additionalProperties: false },
   },
   {
     name: 'get_config',
-    description: 'Return the public project config (provider, model, manager, deployUrl, autoPush, roles, workstreams). Never returns API keys.',
+    description: "Return the public project config (provider, model, manager, deployUrl, autoPush, roles, workstreams), plus `me` and `activeWorkstream` resolved for the calling user. `projectDefaults` holds what the repo's config.json says. Never returns API keys.",
     inputSchema: { type: 'object', properties: {}, additionalProperties: false },
   },
   {
@@ -236,7 +238,7 @@ export const TOOLS = [
   },
   {
     name: 'workstream_use',
-    description: RISKY + 'changes the active workstream. All subsequent contribute/ask/reflect calls without an explicit workstream will target this one. Low-severity but user-visible; confirm before switching.' + REPORT,
+    description: 'Changes the calling user\'s active workstream. All their subsequent contribute/ask/reflect calls without an explicit workstream target this one. Personal setting — it is not written to the repo and does not affect other users.' + REPORT,
     inputSchema: {
       type: 'object',
       properties: { id: { type: 'string' } },
@@ -245,12 +247,11 @@ export const TOOLS = [
   },
   {
     name: 'review_approve',
-    description: RISKY + 'applies a queued contribution to shared context, regenerates the bound role files, and commits. Irreversible without a git revert. Manager-gated: caller (via `author`) must match config.manager if set. Report the queue item author + summary to the user before calling; report the resulting operations after.' + REPORT,
+    description: RISKY + 'applies a queued contribution to shared context, regenerates the bound role files, and commits. Irreversible without a git revert. Manager-gated against the authenticated caller; there is no way to assert a different identity. Report the queue item author + summary to the user before calling; report the resulting operations after.' + REPORT,
     inputSchema: {
       type: 'object',
       properties: {
         id: { type: 'string', description: 'Queue item id (from list_pending_reviews)' },
-        author: { type: 'string', description: 'Caller identity — must match config.manager if a manager gate is set' },
       },
       required: ['id'], additionalProperties: false,
     },
@@ -263,7 +264,6 @@ export const TOOLS = [
       properties: {
         id: { type: 'string' },
         reason: { type: 'string' },
-        author: { type: 'string' },
       },
       required: ['id'], additionalProperties: false,
     },
@@ -284,7 +284,6 @@ export const TOOLS = [
       type: 'object',
       properties: {
         id: { type: 'string', description: 'Snapshot id or unique prefix' },
-        author: { type: 'string' },
       },
       required: ['id'], additionalProperties: false,
     },
@@ -295,7 +294,7 @@ export const TOOLS = [
     inputSchema: {
       type: 'object',
       properties: {
-        id: { type: 'string' }, reason: { type: 'string' }, author: { type: 'string' },
+        id: { type: 'string' }, reason: { type: 'string' },
       },
       required: ['id'], additionalProperties: false,
     },
@@ -311,13 +310,13 @@ export const TOOLS = [
   },
   {
     name: 'config_set',
-    description: RISKY + 'writes a single config key. Allowed keys: provider, model, githubRawBase, manager, managerEmail, deployUrl, autoPush. Changing `manager` re-gates who can approve/reject; changing `provider` may reset `model`.' + REPORT,
+    description: RISKY + "writes a single config key. Project-wide keys: provider, model, githubRawBase, manager, managerEmail, deployUrl, autoPush — these change the project for everyone. Personal key: name — the display name used on the caller's own contributions, stored against them and never written to the repo. Changing `manager` re-gates who can approve/reject; changing `provider` may reset `model`." + REPORT,
     inputSchema: {
       type: 'object',
       properties: {
         key: {
           type: 'string',
-          enum: ['provider', 'model', 'githubRawBase', 'manager', 'managerEmail', 'deployUrl', 'autoPush'],
+          enum: ['provider', 'model', 'githubRawBase', 'manager', 'managerKey', 'managerEmail', 'deployUrl', 'autoPush', 'name'],
         },
         value: { description: 'String, boolean, or empty string to clear' },
       },
@@ -356,6 +355,26 @@ export function makeHandlers(projectRoot) {
     return teamctxDir;
   };
 
+  // Local (stdio) mode has no ambient actor, so this falls through to the git
+  // identity in the project directory. Hosted mode gets one seeded per request
+  // from the OAuth session — see api/mcp/[owner]/[repo].js.
+  // In hosted mode `projectRoot` is a context object, not a path — never hand it
+  // to anything that shells out to git.
+  const gitCwd = isHosted ? undefined : projectRoot;
+
+  const who = async (teamctxDir, config) => {
+    const actor = await resolveActor({ config, cwd: gitCwd });
+    const identity = await resolveIdentity({ actor, config, teamctxDir });
+    return {
+      actor,
+      name: identity.name,
+      // Where the *name* came from. 'override' when the user set their own,
+      // which is not the same as where the actor was authenticated.
+      nameSource: identity.source,
+      workstream: await resolveActiveWorkstream({ actor, config, teamctxDir }),
+    };
+  };
+
   return {
     async get_context() {
       const teamctxDir = dir();
@@ -370,7 +389,9 @@ export function makeHandlers(projectRoot) {
     },
 
     async list_workstreams() {
-      return textResult({ workstreams: listAllWorkstreams({ teamctxDir: dir() }) });
+      return textResult({
+        workstreams: await listAllWorkstreams({ teamctxDir: dir(), projectDir: gitCwd }),
+      });
     },
 
     async get_workstream({ id }) {
@@ -404,16 +425,22 @@ export function makeHandlers(projectRoot) {
     async get_status() {
       const teamctxDir = dir();
       const config = readConfig(teamctxDir);
-      const workstreams = listAllWorkstreams({ teamctxDir });
+      const workstreams = await listAllWorkstreams({ teamctxDir, projectDir: gitCwd });
       const contributions = readContributions(teamctxDir);
       const decisions = contributions.filter(c => c.tagged === 'decision');
+      const me = await who(teamctxDir, config);
       return textResult({
         project: config.project,
         provider: config.provider || 'anthropic',
         model: config.model,
         manager: config.manager || null,
-        me: config.me,
-        activeWorkstream: config.activeWorkstream || 'main',
+        // Who *this caller* is and where *they* are working — not the shared
+        // config.me / config.activeWorkstream, which are only the defaults.
+        me: me.name,
+        meSource: me.nameSource,
+        actorSource: me.actor.source,
+        activeWorkstream: me.workstream,
+        projectDefaults: { me: config.me, activeWorkstream: config.activeWorkstream || 'main' },
         totalWhys: workstreams.reduce((n, w) => n + w.whyCount, 0),
         workstreams,
         contributions: { total: contributions.length, decisions: decisions.length },
@@ -422,7 +449,10 @@ export function makeHandlers(projectRoot) {
     },
 
     async get_config() {
-      return textResult(getConfig({ teamctxDir: dir() }));
+      // `me` and `activeWorkstream` come back resolved for *this* caller;
+      // `projectDefaults` carries what config.json says, which is only the
+      // fallback for someone who has set no preference of their own.
+      return textResult(await getConfig({ teamctxDir: dir(), projectDir: gitCwd }));
     },
 
     async ask({ question, role, audit }) {
@@ -438,7 +468,8 @@ export function makeHandlers(projectRoot) {
         roleMd = readRoleFile(role, teamctxDir);
       }
       const sharedMd = readSharedMd(teamctxDir);
-      const workstream = readWorkstream(config.activeWorkstream || 'main', teamctxDir);
+      const { workstream: activeWorkstreamId } = await who(teamctxDir, config);
+      const workstream = readWorkstream(activeWorkstreamId, teamctxDir);
       const contributions = readContributions(teamctxDir);
       const answer = await answerQuestion({
         sharedMd, roleMd, question, config,
@@ -448,12 +479,12 @@ export function makeHandlers(projectRoot) {
     },
 
     async suggest_roles({ workstream } = {}) {
-      const result = await coreSuggestRoles({ workstreamId: workstream, teamctxDir: dir() });
+      const result = await coreSuggestRoles({ workstreamId: workstream, teamctxDir: dir(), projectDir: gitCwd });
       return textResult(result);
     },
 
     async suggest_workstream_splits() {
-      const result = await suggestWorkstreamSplits({ teamctxDir: dir() });
+      const result = await suggestWorkstreamSplits({ teamctxDir: dir(), projectDir: gitCwd });
       return textResult({
         activeId: result.activeId,
         splits: result.splits,
@@ -542,18 +573,22 @@ export function makeHandlers(projectRoot) {
     },
 
     async workstream_use({ id }) {
-      const r = useWorkstream({ id, teamctxDir: dir() });
-      return textResult({ ...r, reportBack: `Tell the user: active workstream is now "${r.activeWorkstream}".` });
+      const r = await useWorkstream({ id, teamctxDir: dir(), projectDir: gitCwd });
+      return textResult({
+        ...r,
+        reportBack: `Tell the user: their active workstream is now "${r.activeWorkstream}". This is a personal setting — it does not change anyone else's.`,
+      });
     },
 
-    async review_approve({ id, author }) {
-      const r = await approveReview({ id, teamctxDir: dir(), projectDir: projectRoot, actor: author });
+    async review_approve({ id }) {
+      // No caller-supplied identity: the gate reads the authenticated actor.
+      const r = await approveReview({ id, teamctxDir: dir(), projectDir: projectRoot });
       const reportBack = `Tell the user: approved contribution ${r.id} by ${r.author} on workstream "${r.workstream}" (${r.operations.length} op${r.operations.length === 1 ? '' : 's'}${r.rolesRegenerated.length ? `, regenerated roles: ${r.rolesRegenerated.join(', ')}` : ''}${r.pushed ? ', pushed' : ''}).`;
       return textResult({ ...r, reportBack });
     },
 
-    async review_reject({ id, reason, author }) {
-      const r = await rejectReview({ id, reason, teamctxDir: dir(), projectDir: projectRoot, actor: author });
+    async review_reject({ id, reason }) {
+      const r = await rejectReview({ id, reason, teamctxDir: dir(), projectDir: projectRoot });
       const reportBack = `Tell the user: rejected ${r.id}${r.reason ? ` (reason: ${r.reason})` : ''}${r.pushed ? ' — pushed' : ''}.`;
       return textResult({ ...r, reportBack });
     },
@@ -564,14 +599,14 @@ export function makeHandlers(projectRoot) {
       return textResult({ ...r, reportBack });
     },
 
-    async snapshot_approve({ id, author }) {
-      const r = await approveSnapshot({ prefix: id, teamctxDir: dir(), projectDir: projectRoot, actor: author });
+    async snapshot_approve({ id }) {
+      const r = await approveSnapshot({ prefix: id, teamctxDir: dir(), projectDir: projectRoot });
       const reportBack = `Tell the user: snapshot ${r.id} approved by ${r.approvedBy} — it is now the current-approved snapshot.`;
       return textResult({ ...r, reportBack });
     },
 
-    async snapshot_reject({ id, reason, author }) {
-      const r = await rejectSnapshot({ prefix: id, reason, teamctxDir: dir(), projectDir: projectRoot, actor: author });
+    async snapshot_reject({ id, reason }) {
+      const r = await rejectSnapshot({ prefix: id, reason, teamctxDir: dir(), projectDir: projectRoot });
       const reportBack = `Tell the user: snapshot ${r.id} rejected${r.reason ? ` (reason: ${r.reason})` : ''}.`;
       return textResult({ ...r, reportBack });
     },
@@ -583,9 +618,15 @@ export function makeHandlers(projectRoot) {
     },
 
     async config_set({ key, value }) {
-      const r = setConfig({ key, value, teamctxDir: dir() });
+      const r = await setConfig({ key, value, teamctxDir: dir(), projectDir: gitCwd });
       const notes = r.notes.length ? ` Notes: ${r.notes.join(' | ')}` : '';
-      return textResult({ ...r, reportBack: `Tell the user: config.${r.key} set to ${JSON.stringify(r.value)}.${notes}` });
+      // Clearing is not setting. A client that surfaces only reportBack would
+      // otherwise tell the user their name was set to the very value they just
+      // removed the override for.
+      const what = r.cleared
+        ? `config.${r.key} override cleared — it is derived again, currently ${JSON.stringify(r.value)}.`
+        : `config.${r.key} set to ${JSON.stringify(r.value)}.`;
+      return textResult({ ...r, reportBack: `Tell the user: ${what}${notes}` });
     },
   };
 }
