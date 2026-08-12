@@ -2,7 +2,8 @@ import { existsSync, mkdirSync, writeFileSync, readFileSync } from 'fs';
 import { join } from 'path';
 import { checkGitRepo, commitContext, pushContext } from '../../src/git.js';
 import { getModelsFor, getDefaultModelFor } from '../../src/ai.js';
-import { writeConfig, writeWorkstream, writeWorkstreamMd } from '../../src/storage.js';
+import { readConfig, writeConfig, writeWorkstream, writeWorkstreamMd } from '../../src/storage.js';
+import { getCurrentSession } from '../../src/session-context.js';
 import { serializeToMd } from '../../src/context.js';
 import { resolveActor } from '../../src/actor.js';
 import { writePrefs } from '../../src/prefs.js';
@@ -14,6 +15,21 @@ const PROVIDERS = [
 ];
 
 export function getProviders() { return PROVIDERS.map(p => ({ ...p })); }
+
+/**
+ * Hosted mode cannot stat a directory, so it asks the storage layer whether a
+ * config is already readable — which is the thing "already initialized" really
+ * means.
+ */
+function alreadyInitialized(hosted, teamctxDir) {
+  if (!hosted) return existsSync(teamctxDir);
+  try {
+    readConfig();
+    return true;
+  } catch {
+    return false;
+  }
+}
 
 export function unignoreTeamctx(projectDir) {
   const gitignorePath = join(projectDir, '.gitignore');
@@ -35,8 +51,17 @@ export async function initProject({
   deployUrl = '',
   githubRawBase = '',
   managerEmail = '',
+  source = 'cli',
 }) {
-  if (!projectDir) throw new Error('projectDir is required');
+  // Hosted mode has no checkout: `projectDir` is the GitHub context object, and
+  // every write goes through the session-aware storage layer instead. Every
+  // other write path in the codebase already branches on this — initProject was
+  // the one that did not, so bootstrapping a project through the hosted MCP
+  // server crashed on the first `join()`.
+  const hosted = !!getCurrentSession();
+  const gitCwd = hosted ? undefined : projectDir;
+
+  if (!hosted && !projectDir) throw new Error('projectDir is required');
   if (!project) throw new Error('project name is required');
   if (!me) throw new Error('author name (me) is required');
 
@@ -45,10 +70,13 @@ export async function initProject({
     throw new Error(`unknown provider "${provider}". Valid: ${PROVIDERS.map(p => p.id).join(', ')}`);
   }
 
-  await checkGitRepo({ cwd: projectDir });
+  await checkGitRepo({ cwd: gitCwd });
 
-  const teamctxDir = join(projectDir, '.teamctx');
-  if (existsSync(teamctxDir)) {
+  // Nominal in hosted mode: the storage layer ignores `dir` when a session is
+  // ambient and addresses everything from the repo root, so this is only ever
+  // a real path locally.
+  const teamctxDir = hosted ? '.teamctx' : join(projectDir, '.teamctx');
+  if (alreadyInitialized(hosted, teamctxDir)) {
     throw new Error('.teamctx/ already exists. This project is already initialized.');
   }
 
@@ -58,9 +86,11 @@ export async function initProject({
     // lax registry: warn via return, don't hard-fail
   }
 
-  const gitignoreChanged = unignoreTeamctx(projectDir);
-
-  mkdirSync(join(teamctxDir, 'context', 'roles'), { recursive: true });
+  // Both are filesystem-only. Git has no empty directories, so the tree is
+  // implied by the files below; and the hosted session prefetches `.teamctx/**`
+  // only, so there is no .gitignore in its buffer to rewrite.
+  const gitignoreChanged = hosted ? false : unignoreTeamctx(projectDir);
+  if (!hosted) mkdirSync(join(teamctxDir, 'context', 'roles'), { recursive: true });
 
   const createdAt = new Date().toISOString();
   const config = {
@@ -76,21 +106,28 @@ export async function initProject({
   const workstream = { id: 'main', name: project, whys: [] };
   writeWorkstream('main', workstream, teamctxDir);
   writeWorkstreamMd('main', serializeToMd(workstream, project), teamctxDir);
-  writeFileSync(join(teamctxDir, 'contributions.jsonl'), '');
+  // Locally this reserves the file so the layout is complete on disk. Hosted,
+  // appendContribution creates it on first write and readContributions already
+  // treats absence as empty — committing an empty blob would be noise.
+  if (!hosted) writeFileSync(join(teamctxDir, 'contributions.jsonl'), '');
 
   // Record the name they just chose as *their* preference, not only as the
   // project default. Without this, the next time they contribute their git
   // identity would silently override the handle they typed here.
   try {
-    const actor = await resolveActor({ config, cwd: projectDir });
+    const actor = await resolveActor({ config, cwd: gitCwd });
     await writePrefs(actor, { name: me }, teamctxDir);
   } catch { /* preferences are best-effort; never block init */ }
 
-  await commitContext(`chore: initialize teamctx for "${project}"`, { cwd: projectDir });
+  // Same note `contributeCore` puts on its commits: reading the history of a
+  // repo initialized from a chat client, there is otherwise nothing to say where
+  // the commit came from — no local checkout, no shell, just an author.
+  const sourceNote = source === 'mcp' ? ' (via mcp)' : '';
+  await commitContext(`chore: initialize teamctx for "${project}"${sourceNote}`, gitCwd ? { cwd: gitCwd } : undefined);
 
   let pushed = false;
   if (autoPush) {
-    try { await pushContext({ cwd: projectDir }); pushed = true; } catch { /* no remote yet */ }
+    try { await pushContext(gitCwd ? { cwd: gitCwd } : undefined); pushed = true; } catch { /* no remote yet */ }
   }
 
   return {

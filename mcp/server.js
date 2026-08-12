@@ -501,7 +501,7 @@ export function makeHandlers(projectRoot) {
         apply: !!args.apply,
         source: 'mcp',
         teamctxDir: dir(),
-        projectDir: projectRoot,
+        projectDir: gitCwd,
       });
       return textResult({ ...r, reportBack: reportBackContribute(r) });
     },
@@ -514,7 +514,7 @@ export function makeHandlers(projectRoot) {
 
     async init(args) {
       const r = await initProject({
-        projectDir: projectRoot,
+        projectDir: gitCwd,
         project: args.project, me: args.me,
         provider: args.provider || 'anthropic',
         model: args.model,
@@ -522,6 +522,7 @@ export function makeHandlers(projectRoot) {
         deployUrl: args.deployUrl,
         githubRawBase: args.githubRawBase,
         managerEmail: args.managerEmail,
+        source: 'mcp',
       });
       const reportBack = `Tell the user: teamctx initialized at ${r.projectDir} for project "${r.config.project}"` +
         (r.envVarPresent ? '' : ` — WARNING: ${r.envVarNeeded} is not set in the environment; ask/contribute/reflect will fail until it is.`) +
@@ -545,7 +546,7 @@ export function makeHandlers(projectRoot) {
         email: args.email,
         workstreamId: args.workstream,
         teamctxDir: dir(),
-        projectDir: projectRoot,
+        projectDir: gitCwd,
       });
       const reportBack = `Tell the user: role "${r.slug}" created on workstream "${r.workstreamId}"${r.pushed ? ' (committed and pushed)' : ' (committed)'}.`;
       return textResult({ ...r, reportBack });
@@ -554,7 +555,7 @@ export function makeHandlers(projectRoot) {
     async role_assign(args) {
       const r = await assignRole({
         slug: args.slug, workstreamId: args.workstream,
-        teamctxDir: dir(), projectDir: projectRoot,
+        teamctxDir: dir(), projectDir: gitCwd,
       });
       const reportBack = r.changed
         ? `Tell the user: role "${r.slug}" moved to workstream "${r.workstreamId}"; role file regenerated.`
@@ -565,7 +566,7 @@ export function makeHandlers(projectRoot) {
     async workstream_split(args) {
       const r = await splitWorkstreams({
         accepted: args.accepted,
-        teamctxDir: dir(), projectDir: projectRoot,
+        teamctxDir: dir(), projectDir: gitCwd,
       });
       const summary = r.results.map(x => `"${x.splitName}" (${x.newId}, ${x.movedWhyCount} Whys${x.movedRoles.length ? `, moved roles ${x.movedRoles.join(',')}` : ''})`).join('; ');
       const reportBack = `Tell the user: split "${r.sourceId}" into ${r.results.length} new workstream${r.results.length === 1 ? '' : 's'}: ${summary}.`;
@@ -582,37 +583,37 @@ export function makeHandlers(projectRoot) {
 
     async review_approve({ id }) {
       // No caller-supplied identity: the gate reads the authenticated actor.
-      const r = await approveReview({ id, teamctxDir: dir(), projectDir: projectRoot });
+      const r = await approveReview({ id, teamctxDir: dir(), projectDir: gitCwd });
       const reportBack = `Tell the user: approved contribution ${r.id} by ${r.author} on workstream "${r.workstream}" (${r.operations.length} op${r.operations.length === 1 ? '' : 's'}${r.rolesRegenerated.length ? `, regenerated roles: ${r.rolesRegenerated.join(', ')}` : ''}${r.pushed ? ', pushed' : ''}).`;
       return textResult({ ...r, reportBack });
     },
 
     async review_reject({ id, reason }) {
-      const r = await rejectReview({ id, reason, teamctxDir: dir(), projectDir: projectRoot });
+      const r = await rejectReview({ id, reason, teamctxDir: dir(), projectDir: gitCwd });
       const reportBack = `Tell the user: rejected ${r.id}${r.reason ? ` (reason: ${r.reason})` : ''}${r.pushed ? ' — pushed' : ''}.`;
       return textResult({ ...r, reportBack });
     },
 
     async snapshot_create({ message } = {}) {
-      const r = await createSnapshot({ message, teamctxDir: dir(), projectDir: projectRoot });
+      const r = await createSnapshot({ message, teamctxDir: dir(), projectDir: gitCwd });
       const reportBack = `Tell the user: snapshot ${r.snapshot.id} created${r.snapshot.message ? ` (${r.snapshot.message})` : ''} — manager must approve via snapshot_approve for it to become current.`;
       return textResult({ ...r, reportBack });
     },
 
     async snapshot_approve({ id }) {
-      const r = await approveSnapshot({ prefix: id, teamctxDir: dir(), projectDir: projectRoot });
+      const r = await approveSnapshot({ prefix: id, teamctxDir: dir(), projectDir: gitCwd });
       const reportBack = `Tell the user: snapshot ${r.id} approved by ${r.approvedBy} — it is now the current-approved snapshot.`;
       return textResult({ ...r, reportBack });
     },
 
     async snapshot_reject({ id, reason }) {
-      const r = await rejectSnapshot({ prefix: id, reason, teamctxDir: dir(), projectDir: projectRoot });
+      const r = await rejectSnapshot({ prefix: id, reason, teamctxDir: dir(), projectDir: gitCwd });
       const reportBack = `Tell the user: snapshot ${r.id} rejected${r.reason ? ` (reason: ${r.reason})` : ''}.`;
       return textResult({ ...r, reportBack });
     },
 
     async reflect({ workstream } = {}) {
-      const r = await reflectWorkstream({ workstreamId: workstream, teamctxDir: dir(), projectDir: projectRoot });
+      const r = await reflectWorkstream({ workstreamId: workstream, teamctxDir: dir(), projectDir: gitCwd });
       const reportBack = `Tell the user: reflected workstream "${r.workstreamId}"${r.rolesRegenerated.length ? `; regenerated roles: ${r.rolesRegenerated.join(', ')}` : ''}${r.pushed ? '; pushed' : ''}.`;
       return textResult({ workstreamId: r.workstreamId, rolesRegenerated: r.rolesRegenerated, pushed: r.pushed, pushError: r.pushError, reportBack });
     },
