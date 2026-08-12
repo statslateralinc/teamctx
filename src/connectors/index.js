@@ -1,4 +1,5 @@
 import * as folder from './folder.js';
+import * as slack from './slack.js';
 
 /**
  * Import connectors.
@@ -27,7 +28,7 @@ import * as folder from './folder.js';
  * from the environment — never from config.json, which is committed.
  */
 
-const CONNECTORS = { folder };
+const CONNECTORS = { folder, slack };
 
 export class UnknownConnectorError extends Error {
   constructor(name) {
