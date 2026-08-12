@@ -202,18 +202,17 @@ export async function list(a, selector, { since, now = Date.now() } = {}) {
 
   const oldest = since ? Math.floor(new Date(since).getTime() / 1000) : Math.floor((now - 30 * 864e5) / 1000);
   const items = [];
-  const skipped = [];
 
   for await (const page of paged(a.token, 'conversations.history', { channel: target.channel, oldest, limit: 200 })) {
     for (const m of page.messages || []) {
-      // Threads only. A standalone message is usually chatter, and importing
-      // every one of them is the firehose this connector exists to avoid.
-      if (!m.thread_ts || m.thread_ts !== m.ts) continue;
       if (isNoise(m)) continue;
-      if (!(m.reply_count > 0)) {
-        skipped.push({ id: `slack:${target.channel}/${permalinkTs(m.ts)}`, reason: 'no replies' });
-        continue;
-      }
+      // Threads only, and silently — Slack sets `thread_ts` only once a thread
+      // exists, so every standup and one-line aside in the window would
+      // otherwise be reported as skipped. A busy channel would produce
+      // hundreds of those lines, which is noise dressed as information. This
+      // mirrors `folder`, which reports a file you named but walks past an
+      // unsupported one inside a directory without comment.
+      if (m.thread_ts !== m.ts || !(m.reply_count > 0)) continue;
       items.push({
         ref: { channel: target.channel, ts: m.ts },
         id: `slack:${target.channel}/${permalinkTs(m.ts)}`,
@@ -221,7 +220,13 @@ export async function list(a, selector, { since, now = Date.now() } = {}) {
       });
     }
   }
-  return { items, skipped };
+
+  // Slack answers newest-first. Import oldest-first so a decision is proposed
+  // by the thread where it was argued out, and a later reminder of it adds
+  // only what is new — rather than the reminder claiming it and the real
+  // discussion arriving as an afterthought.
+  items.reverse();
+  return { items, skipped: [] };
 }
 
 export async function fetch(a, ref) {

@@ -121,9 +121,10 @@ describe('renderThread', () => {
 });
 
 describe('list — a channel', () => {
-  it('returns threads and skips messages with no replies', async () => {
-    // A message nobody replied to is not a conversation; saying so is more
-    // useful than silently dropping it.
+  it('returns threads and walks past everything else without comment', async () => {
+    // Slack only sets thread_ts once a thread exists, so a standup or a
+    // one-line aside has none. Reporting each as "skipped" would produce
+    // hundreds of lines from a busy channel — noise dressed as information.
     globalThis.fetch = vi.fn(async () => ok({
       messages: [
         { ts: '1699887654.123456', thread_ts: '1699887654.123456', reply_count: 3, user: 'U1', text: 'move off Stripe?' },
@@ -139,7 +140,24 @@ describe('list — a channel', () => {
       title: 'move off Stripe?',
       ref: { channel: 'C0421', ts: '1699887654.123456' },
     });
-    expect(r.skipped).toEqual([{ id: 'slack:C0421/p1699886000000200', reason: 'no replies' }]);
+    expect(r.skipped).toEqual([]);
+  });
+
+  it('imports oldest-first, whatever order Slack answers in', async () => {
+    // Slack returns newest-first. Left that way, a later reminder of a
+    // decision is distilled before the thread where it was argued out — the
+    // reminder claims it and the real discussion arrives as an afterthought.
+    globalThis.fetch = vi.fn(async () => ok({
+      messages: [
+        { ts: '3.3', thread_ts: '3.3', reply_count: 1, user: 'U1', text: 'reminder: we moved off Stripe' },
+        { ts: '2.2', thread_ts: '2.2', reply_count: 1, user: 'U1', text: 'hiring plan' },
+        { ts: '1.1', thread_ts: '1.1', reply_count: 4, user: 'U1', text: 'should we move off Stripe?' },
+      ],
+    }));
+    const r = await slack.list(authed(), 'C0421ABCD');
+    expect(r.items.map(i => i.title)).toEqual([
+      'should we move off Stripe?', 'hiring plan', 'reminder: we moved off Stripe',
+    ]);
   });
 
   it('defaults to a recent window rather than all history', async () => {
@@ -172,7 +190,7 @@ describe('list — a channel', () => {
     let i = 0;
     globalThis.fetch = vi.fn(async () => pages[i++]);
     const r = await slack.list(authed(), 'C0421ABCD');
-    expect(r.items.map(x => x.title)).toEqual(['a', 'b']);
+    expect(r.items.map(x => x.title).sort()).toEqual(['a', 'b']);
   });
 });
 
