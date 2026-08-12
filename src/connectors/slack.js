@@ -49,8 +49,11 @@ class SlackError extends Error {
       not_authed: 'no token was sent',
       token_revoked: 'the token has been revoked',
       missing_scope: 'the app is missing a scope — add channels:history (or groups:history)',
-      channel_not_found: 'no such channel, or your token cannot see it',
-      not_in_channel: 'the token owner is not a member of that channel',
+      // A user token reads every public channel in the workspace, so these
+      // two almost always mean a private channel: `channel_not_found` when the
+      // token cannot see it exists at all, `not_in_channel` when it can.
+      channel_not_found: 'no such channel — check the id, or join it if it is private',
+      not_in_channel: 'the token owner is not in that private channel (add groups:history and join it)',
     }[code];
     super(hint ? `slack ${method}: ${hint} (${code})` : `slack ${method} failed: ${code}`);
     this.code = code;

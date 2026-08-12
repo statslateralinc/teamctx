@@ -107,9 +107,12 @@ docs so nobody "simplifies" it later by publishing a shared app.
   screens before the first import. A device-code or OAuth flow is friendlier but
   needs a redirect target, which means a server, which the rate limits now
   actively punish. The barrier may be the correct trade.
-- **Private channels** need `groups:history` and only see what the token's owner
-  is in. Silent partial results are worse than a refusal — probably worth
-  reporting "3 of 5 channels not accessible" rather than quietly importing three.
+- **Reach is wider than people assume.** A user token with `channels:history`
+  reads *every* public channel in the workspace, including ones its owner has
+  never opened; `groups:history` adds only the private channels they are in.
+  That is an argument for keeping selection explicit — a firehose here would
+  pull in channels nobody meant to share. Worth saying plainly in the setup
+  docs so the person pasting a token knows what they are handing over.
 - **Re-import.** Importing `#eng` next month re-proposes the same threads; the
   run-scoped dedupe does not persist. A watermark per channel would fix it, but
   where does it live — the connector, or teamctx?
