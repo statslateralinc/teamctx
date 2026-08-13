@@ -19,6 +19,7 @@ These are **contributor-facing write-ups** for the larger items on the
 |----------|--------|-----------|
 | [Context import (cold-start onboarding)](context-import.md) | Bring your own tools · Managers in control | Medium–Large (splittable) |
 | [Import connector contract](import-connectors.md) | Bring your own tools | Medium (one PR per connector after) |
+| [Notion import connector](import-notion.md) | Bring your own tools | Medium (the block tree is the work) |
 | [Local team-productivity metrics](local-metrics.md) | Prove team productivity | Medium (splittable) |
 
 ## Shipped proposals 🎉
