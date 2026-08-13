@@ -100,7 +100,10 @@ speed) or gets 429'd (pacing writes at read speed).
    `_d` prefixes the doc id, `_su` the short page id, and the API accepts that
    short id directly as `pageIdOrName`.
    - a **doc** link or id → every canvas page in it
-   - a **page** link → that page
+   - a **page** link → that page and everything nested beneath it, at any
+     depth. Free, because the flat listing carries `parent.id` on every page —
+     and it matches Notion, where pasting a section link and getting only its
+     opening paragraph would be equally useless.
    - nothing → every doc the token can see, bounded by `--since`
 
 6. **Skip pages that have no content, with a reason.** `contentType`

@@ -163,6 +163,35 @@ describe('list', () => {
     expect(items[0].title, 'the listing also gives the real title').toBe('Company Overview');
   });
 
+  it('takes a named page with everything beneath it, however deep', async () => {
+    // Matches the Notion connector: pasting a link to a section and getting
+    // only its opening paragraph would be useless. Free here, because Coda
+    // returns the whole doc flat with a parent link on every page.
+    const kid = (id, name, parent) => codaPage(id, name, { parent: { id: parent, type: 'page' } });
+    globalThis.fetch = route([
+      [`docs/${DOC}/pages`, json({ items: [
+        codaPage('p-top', 'Products'),
+        kid('p-mid', 'AxisCore Deep Dive', 'p-top'),
+        kid('p-low', 'Benchmarks', 'p-mid'),
+        codaPage('p-other', 'Unrelated'),
+      ] })],
+    ]);
+    const { items } = await coda.list(authed(), `${DOC}/p-top`, nowait);
+    expect(items.map(i => i.title)).toEqual(['Products', 'AxisCore Deep Dive', 'Benchmarks']);
+    expect(items.map(i => i.title), 'a sibling subtree must not be swept in').not.toContain('Unrelated');
+  });
+
+  it('does not loop when pages are arranged in a cycle', async () => {
+    globalThis.fetch = route([
+      [`docs/${DOC}/pages`, json({ items: [
+        codaPage('a', 'A', { parent: { id: 'b', type: 'page' } }),
+        codaPage('b', 'B', { parent: { id: 'a', type: 'page' } }),
+      ] })],
+    ]);
+    const { items } = await coda.list(authed(), `${DOC}/a`, nowait);
+    expect(items).toHaveLength(2);
+  });
+
   it('still accepts a canonical page id directly', async () => {
     globalThis.fetch = route([
       [`docs/${DOC}/pages`, json({ items: [codaPage(PAGE, 'Products')] })],

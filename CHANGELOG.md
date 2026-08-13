@@ -69,7 +69,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Closes #21.
 - **Coda connector.** `teamctx import --from coda <doc-link|page-link>` — a page
   becomes one proposed contribution. A pasted Coda URL carries both ids, so a
-  doc link imports every page in the doc and a page link imports just that one;
+  doc link imports every page in the doc and a page link imports that page plus
+  everything nested beneath it, however deep;
   with no selector it walks the docs your token can see. (The connector honours
   a `since` window; the `--since` flag that reaches it from the command line
   lands with the Slack connector, #22.)

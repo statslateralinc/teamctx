@@ -186,14 +186,36 @@ async function allPages(a, docId, opts) {
  * Costs one extra read, which is the cheap bucket, and pays for itself — it
  * also yields the page's real title instead of echoing the id back.
  */
-async function findPage(a, docId, pageId, opts) {
-  const pages = await allPages(a, docId, opts);
+function findPage(pages, docId, pageId) {
   const match = pages.find(p => p.id === pageId
     || String(p.browserLink || '').endsWith(`_${pageId}`));
   if (!match) {
     throw new Error(`no page "${pageId}" in doc ${docId} — check the link, or that the page still exists`);
   }
   return match;
+}
+
+/**
+ * A page and everything beneath it, however deep.
+ *
+ * Pasting a link to a section and getting only its opening paragraph would be
+ * useless — the same reasoning the Notion connector uses when it walks a
+ * subtree. Here it is free: Coda returns every page in the doc flat, each
+ * carrying `parent.id`, so the descendants are already in hand.
+ */
+function withDescendants(pages, rootId) {
+  const out = [];
+  const queue = [rootId];
+  const seen = new Set();
+  while (queue.length > 0) {
+    const id = queue.shift();
+    if (seen.has(id)) continue;          // a doc can be arranged in a cycle
+    seen.add(id);
+    const page = pages.find(p => p.id === id);
+    if (page) out.push(page);
+    for (const p of pages) if (p.parent?.id === id) queue.push(p.id);
+  }
+  return out;
 }
 
 async function pagesOf(a, docId, { since, opts }) {
@@ -223,16 +245,20 @@ export async function list(a, selector, { since, ...opts } = {}) {
   const target = parseSelector(Array.isArray(selector) ? selector[0] : selector);
 
   if (target.pageId) {
-    const page = await findPage(a, target.docId, target.pageId, opts);
-    // An explicit page that cannot export is worth saying out loud, unlike one
-    // walked past inside a doc.
-    if (!isCanvas(page)) {
-      return {
-        items: [],
-        skipped: [{ id: `coda:${target.docId}/${page.id}`, reason: `no exportable content (${page.contentType})` }],
-      };
+    const pages = await allPages(a, target.docId, opts);
+    const root = findPage(pages, target.docId, target.pageId);
+    const items = [];
+    const skipped = [];
+    for (const p of withDescendants(pages, root.id)) {
+      // Worth saying out loud for the page the user named; for a subpage
+      // swept up along the way it is the same nicety the doc listing gives.
+      if (!isCanvas(p)) {
+        skipped.push({ id: `coda:${target.docId}/${p.id}`, reason: `no exportable content (${p.contentType})` });
+        continue;
+      }
+      items.push(itemFor(target.docId, p));
     }
-    return { items: [itemFor(target.docId, page)], skipped: [] };
+    return { items, skipped };
   }
 
   if (target.docId) return pagesOf(a, target.docId, { since, opts });
