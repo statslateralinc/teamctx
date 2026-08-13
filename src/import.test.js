@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { mkdtempSync, mkdirSync, writeFileSync, rmSync, symlinkSync } from 'fs';
 import { join } from 'path';
 import { tmpdir } from 'os';
-import { readDocuments, titleFor, ImportPathError, DEFAULT_MAX_BYTES } from './import.js';
+import { readDocuments, titleFor, normalizeDocument, ImportPathError, DEFAULT_MAX_BYTES } from './import.js';
 
 let root;
 const write = (rel, text) => {
@@ -169,5 +169,61 @@ describe('titles and encoding', () => {
     write('uni.md', '# T\n\ncafé');           // é is two bytes in UTF-8
     const doc = readDocuments(['uni.md'], { cwd: root }).documents[0];
     expect(doc.bytes).toBe(Buffer.byteLength(doc.text, 'utf8'));
+  });
+});
+
+describe('normalizeDocument — the rules every source obeys', () => {
+  // Connectors call this on whatever they fetch, so a remote document is
+  // rejected for exactly the reasons a local file would be.
+  const doc = (over = {}) => normalizeDocument({ id: 'slack:C1/p2', text: 'real content', source: 'slack', ...over });
+
+  it('returns a document with bytes and source filled in', () => {
+    const { document } = doc();
+    expect(document).toMatchObject({ id: 'slack:C1/p2', text: 'real content', source: 'slack' });
+    expect(document.bytes).toBe(Buffer.byteLength('real content', 'utf8'));
+  });
+
+  it('prefers a title the connector already knows', () => {
+    expect(doc({ title: 'Thread in #eng' }).document.title).toBe('Thread in #eng');
+  });
+
+  it('falls back to a markdown heading when the connector has no title', () => {
+    expect(doc({ text: '# Billing plan\n\nbody' }).document.title).toBe('Billing plan');
+  });
+
+  it('falls back to the id when there is no title and no heading', () => {
+    expect(doc({ id: 'notes' }).document.title).toBe('notes');
+  });
+
+  it('ignores a blank title rather than using it', () => {
+    expect(doc({ title: '   ', text: '# Heading\n' }).document.title).toBe('Heading');
+  });
+
+  it('skips empty and whitespace-only text', () => {
+    expect(doc({ text: '' }).skipped.reason).toBe('empty');
+    expect(doc({ text: '  \n\t ' }).skipped.reason).toBe('empty');
+    expect(doc({ text: undefined }).skipped.reason).toBe('empty');
+  });
+
+  it('skips oversized text with the size in the reason', () => {
+    const r = normalizeDocument({ id: 'x', text: 'y'.repeat(2000) }, { maxBytes: 1000 });
+    expect(r.skipped.reason).toMatch(/too large/);
+  });
+
+  it('strips a BOM before measuring or titling', () => {
+    const { document } = doc({ text: '﻿# Title\n\nbody' });
+    expect(document.title).toBe('Title');
+    expect(document.text.startsWith('#')).toBe(true);
+  });
+
+  it('refuses a document with no id instead of inventing one', () => {
+    // An id is how a contribution points back at its artifact; guessing would
+    // silently break provenance.
+    expect(normalizeDocument({ text: 'body' }).skipped.reason).toBe('no id');
+  });
+
+  it('never throws — one bad item must not abandon the rest of the run', () => {
+    expect(() => normalizeDocument({})).not.toThrow();
+    expect(() => normalizeDocument({ id: 'x', text: 42 })).not.toThrow();
   });
 });
