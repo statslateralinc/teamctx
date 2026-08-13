@@ -67,6 +67,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   one PR each on top of this. Design notes:
   [docs/proposals/import-connectors.md](docs/proposals/import-connectors.md).
   Closes #21.
+- **Coda connector.** `teamctx import --from coda <doc-link|page-link>` — a page
+  becomes one proposed contribution. A pasted Coda URL carries both ids, so a
+  doc link imports every page in the doc and a page link imports just that one;
+  with no selector it walks the docs your token can see. (The connector honours
+  a `since` window; the `--since` flag that reaches it from the command line
+  lands with the Slack connector, #22.)
+  Coda exports markdown itself, so there is no rendering to get wrong — the
+  connector runs the export job (begin, poll, download) and hands the result
+  straight to the distiller. An export that fails or never finishes fails that
+  one document rather than stalling the run, and pages with no exportable
+  content (embeds, sync pages) are reported with a reason instead of arriving
+  empty.
+  Credentials are your own token from `CODA_TOKEN`, generated under Account
+  settings → API settings. The export download lands on signed storage rather
+  than `coda.io`, and that request deliberately carries no `Authorization`
+  header. Requests are paced per rate-limit bucket, since Coda allows ~100 reads
+  per 6 seconds against ~10 writes and beginning an export is a write. Design
+  notes: [docs/proposals/import-coda.md](docs/proposals/import-coda.md).
+  Closes #27.
 
 ### Changed
 - **Contributions record where they came from in the git history.** The commit
