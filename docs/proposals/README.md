@@ -18,6 +18,8 @@ These are **contributor-facing write-ups** for the larger items on the
 | Proposal | Serves | Rough size |
 |----------|--------|-----------|
 | [Context import (cold-start onboarding)](context-import.md) | Bring your own tools · Managers in control | Medium–Large (splittable) |
+| [Import connector contract](import-connectors.md) | Bring your own tools | Medium (one PR per connector after) |
+| [Slack import connector](import-slack.md) | Bring your own tools | Medium (first connector on the contract) |
 | [Local team-productivity metrics](local-metrics.md) | Prove team productivity | Medium (splittable) |
 
 ## Shipped proposals 🎉

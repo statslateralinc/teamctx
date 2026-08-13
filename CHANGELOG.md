@@ -48,8 +48,52 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Within one run, each document is told what earlier ones already proposed, so
   three files describing the same decision produce one contribution rather than
   three near-duplicates for the manager to reject. Closes #20.
+- **Import connectors.** `teamctx import --from <connector> <selector…>` — a
+  connector turns a source into the documents import already knows how to
+  distill, and nothing else: no AI calls, no queue writes, no dedupe, all of
+  which are shared and already built. `auth → list → fetch`, with `list`
+  separate so `--dry-run` can report what would be pulled without downloading
+  it. Credentials come from the environment, never from the committed
+  `config.json`.
+  Local paths resolve to the built-in `folder` connector, so every import
+  exercises the contract rather than leaving it to drift until the first remote
+  source is written. Whatever a connector returns goes through the same
+  document rules a local file does.
+  `--since` bounds how far back a connector looks. Meaningless for a folder and
+  the difference between a usable import and a drowned review queue for a chat
+  or wiki source, so it sits on the shared surface rather than inside one
+  connector.
+  Individual sources (Slack, Drive, Microsoft 365, Dropbox, Notion, Coda) land
+  one PR each on top of this. Design notes:
+  [docs/proposals/import-connectors.md](docs/proposals/import-connectors.md).
+  Closes #21.
+- **Slack connector.** `teamctx import --from slack <channel-id|message-link>`
+  — a thread becomes one proposed contribution, because a thread has a topic
+  and an ending and is where the reasoning lives. Standalone messages, joins,
+  leaves and bot subtypes never reach the distiller; mentions and links are
+  rendered as prose so it reads what a human would. Threads are imported
+  oldest-first, so a decision is proposed by the thread where it was argued out
+  and a later reminder of it adds only what is new.
+  A pasted Slack "Copy link" works as a selector, which is how you import the
+  one conversation you already know mattered. `--since` bounds the window
+  (default 30 days).
+  Credentials are the user's own token from `SLACK_TOKEN`, never a shipped app:
+  since 29 May 2025 Slack limits distributed non-Marketplace apps to 1 request
+  per minute on `conversations.history`, against 50+ for an app the user
+  created themselves. Setup is in
+  [docs/proposals/import-slack.md](docs/proposals/import-slack.md). Closes #22.
 
 ### Changed
+- **Contributions record where they came from in the git history.** The commit
+  body carries `Source: import:docs/plan.md` (or `web`, `mcp`, and
+  `import:<id>` for whatever a connector returns) on the queue commit and again
+  when a manager approves it. Previously only `mcp` was named, and only on the
+  applied path, so an imported contribution was indistinguishable from a typed
+  one in `git log .teamctx/` — which is the audit trail, and what `teamctx
+  stats` will walk. In the body rather than the subject: a remote id can run to
+  `import:slack:C0421/p1699887654123456`, and truncating it to fit a subject
+  destroys the one property worth recording, that you can follow it back to the
+  artifact. A typed contribution still says nothing.
 - `workstream_use` / `teamctx workstream use` now records a personal
   preference. It no longer writes `activeWorkstream` to the shared config, and
   no longer creates a commit — switching workstream stopped moving everyone
