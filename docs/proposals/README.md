@@ -19,6 +19,7 @@ These are **contributor-facing write-ups** for the larger items on the
 |----------|--------|-----------|
 | [Context import (cold-start onboarding)](context-import.md) | Bring your own tools · Managers in control | Medium–Large (splittable) |
 | [Import connector contract](import-connectors.md) | Bring your own tools | Medium (one PR per connector after) |
+| [Coda import connector](import-coda.md) | Bring your own tools | Small–Medium (the async export is the work) |
 | [Local team-productivity metrics](local-metrics.md) | Prove team productivity | Medium (splittable) |
 
 ## Shipped proposals 🎉
