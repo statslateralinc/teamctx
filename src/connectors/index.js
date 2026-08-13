@@ -1,3 +1,4 @@
+import * as coda from './coda.js';
 import * as folder from './folder.js';
 
 /**
@@ -27,7 +28,7 @@ import * as folder from './folder.js';
  * from the environment — never from config.json, which is committed.
  */
 
-const CONNECTORS = { folder };
+const CONNECTORS = { coda, folder };
 
 export class UnknownConnectorError extends Error {
   constructor(name) {
