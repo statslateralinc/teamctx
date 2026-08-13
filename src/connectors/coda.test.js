@@ -146,11 +146,46 @@ describe('list', () => {
     expect(items.map(i => i.title)).toEqual(['Recent', 'Undated']);
   });
 
-  it('names one page directly without listing the doc', async () => {
-    globalThis.fetch = route([]);
+  it('resolves a pasted page link by its browser link, not by guessing the id', async () => {
+    // Observed on a real doc: for six of seven pages the URL's `_su…` fragment
+    // was the id's last six characters, and for the seventh it was unrelated
+    // (`canvas-6Ba8UKzinj` ↔ `_su6tOu7G`). Deriving the id would pass a test
+    // suite and fail in production, so the match is on browserLink.
+    globalThis.fetch = route([
+      [`docs/${DOC}/pages`, json({ items: [
+        codaPage('canvas-6Ba8UKzinj', 'Company Overview', { browserLink: `https://coda.io/d/D_d${DOC}/Company-Overview_su6tOu7G` }),
+        codaPage('canvas-MNca05ceKS', 'Products', { browserLink: `https://coda.io/d/D_d${DOC}/Products_su05ceKS` }),
+      ] })],
+    ]);
+    const { items } = await coda.list(authed(), `https://coda.io/d/D_d${DOC}/Company-Overview_su6tOu7G`, nowait);
+    expect(items).toHaveLength(1);
+    expect(items[0].ref.pageId, 'must use the real id, not the URL fragment').toBe('canvas-6Ba8UKzinj');
+    expect(items[0].title, 'the listing also gives the real title').toBe('Company Overview');
+  });
+
+  it('still accepts a canonical page id directly', async () => {
+    globalThis.fetch = route([
+      [`docs/${DOC}/pages`, json({ items: [codaPage(PAGE, 'Products')] })],
+    ]);
     const { items } = await coda.list(authed(), `${DOC}/${PAGE}`, nowait);
-    expect(items).toEqual([{ ref: { docId: DOC, pageId: PAGE }, id: `coda:${DOC}/${PAGE}`, title: PAGE }]);
-    expect(calls, 'a named page needs no listing call').toHaveLength(0);
+    expect(items[0].ref.pageId).toBe(PAGE);
+  });
+
+  it('says which page could not be found rather than 404ing later', async () => {
+    globalThis.fetch = route([
+      [`docs/${DOC}/pages`, json({ items: [codaPage(PAGE, 'Products')] })],
+    ]);
+    await expect(coda.list(authed(), `${DOC}/su-nope`, nowait))
+      .rejects.toThrow(/no page "su-nope" in doc/);
+  });
+
+  it('reports a named page that cannot export, instead of returning it empty', async () => {
+    globalThis.fetch = route([
+      [`docs/${DOC}/pages`, json({ items: [codaPage(PAGE, 'Embedded', { contentType: 'embed' })] })],
+    ]);
+    const { items, skipped } = await coda.list(authed(), `${DOC}/${PAGE}`, nowait);
+    expect(items).toEqual([]);
+    expect(skipped[0].reason).toMatch(/no exportable content \(embed\)/);
   });
 });
 

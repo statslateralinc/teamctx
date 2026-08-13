@@ -38,12 +38,20 @@ the Notion connector can be copied with the nouns swapped.
 
 Two consequences.
 
-**1. `list` is genuinely free, so `--dry-run` finally means something.** Notion
-had to read a page's blocks just to discover its child pages, which is the same
-work `fetch` does — the split saved nothing on a subtree. Coda hands back every
-page with `id`, `name`, `parent`, `children` and `browserLink` in a single
-paginated read. Listing an entire doc costs one or two requests and no export
-jobs at all.
+**1. `list` is genuinely cheap.** Notion had to read a page's blocks just to
+discover its child pages, which is the same work `fetch` does — the split saved
+nothing on a subtree. Coda hands back every page with `id`, `name`, `parent`,
+`children` and `browserLink` in a single paginated read. Listing an entire doc
+costs one or two requests and no export jobs at all.
+
+The pipeline does not yet cash that in, though. `collect()` in
+`cli/commands/import.core.js` calls `fetch` for **every** listed item before
+`importDocuments` checks `dryRun`, so `--dry-run` on this doc ran seven export
+jobs to print seven titles. It is free of *AI* calls, not of API calls. That is
+a gap between what the contract (#21) says the split is for — *"`list` is
+separate from `fetch` so `--dry-run` can report what would be pulled without
+downloading it"* — and what it does, and it bites Slack hardest, where a
+dry-run would pull every thread's replies at one request per minute.
 
 **2. `fetch` is the expensive one, and it is rate-limited on the scarce budget.**
 Coda's limits are per user and differ sharply by verb:
@@ -125,6 +133,11 @@ rot. Cite the API base in code and keep prose links to a minimum.
   second implementation to design against; there are now three, and this one is
   different enough to say what it should actually cover. Worth doing once they
   land, rather than in whichever of the three merges first.
+- **Should `--dry-run` skip `fetch` entirely?** It would make the flag mean what
+  the contract says, at the cost of the size column — listing knows a page's
+  title but not its length. Probably worth it: the size is a nicety and the
+  download is the expensive half. This belongs in #21 rather than here, since it
+  changes the shared pipeline for every connector.
 - **`--since` has nothing to filter on in the page list.** Coda pages expose
   `createdAt`/`updatedAt` on the doc, but the window would have to be applied
   per page. If the field is absent, does `--since` silently do nothing — which

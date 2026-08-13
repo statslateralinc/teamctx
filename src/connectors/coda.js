@@ -165,13 +165,44 @@ const itemFor = (docId, page) => ({
   title: page.name || 'Untitled',
 });
 
+/** Every page in a doc, unfiltered — the hierarchy comes back flat and cheap. */
+async function allPages(a, docId, opts) {
+  const out = [];
+  for await (const page of paged(a, `docs/${encodeURIComponent(docId)}/pages?limit=100`, opts)) {
+    out.push(...(page.items || []));
+  }
+  return out;
+}
+
+/**
+ * Resolve the `_su…` fragment from a pasted URL to a real page id.
+ *
+ * The short id is *not* accepted as `pageIdOrName` — passing it back returns
+ * 404. Nor can the real id be derived from it: for six pages of a seven-page
+ * doc the fragment was the id's last six characters, and for the seventh it was
+ * unrelated. A rule that works six times out of seven is worse than no rule, so
+ * this matches on `browserLink`, which every page object carries verbatim.
+ *
+ * Costs one extra read, which is the cheap bucket, and pays for itself — it
+ * also yields the page's real title instead of echoing the id back.
+ */
+async function findPage(a, docId, pageId, opts) {
+  const pages = await allPages(a, docId, opts);
+  const match = pages.find(p => p.id === pageId
+    || String(p.browserLink || '').endsWith(`_${pageId}`));
+  if (!match) {
+    throw new Error(`no page "${pageId}" in doc ${docId} — check the link, or that the page still exists`);
+  }
+  return match;
+}
+
 async function pagesOf(a, docId, { since, opts }) {
   const cutoff = since ? new Date(since).getTime() : null;
   const items = [];
   const skipped = [];
 
-  for await (const page of paged(a, `docs/${encodeURIComponent(docId)}/pages?limit=100`, opts)) {
-    for (const p of page.items || []) {
+  {
+    for (const p of await allPages(a, docId, opts)) {
       if (!isCanvas(p)) {
         skipped.push({ id: `coda:${docId}/${p.id}`, reason: `no exportable content (${p.contentType})` });
         continue;
@@ -192,16 +223,16 @@ export async function list(a, selector, { since, ...opts } = {}) {
   const target = parseSelector(Array.isArray(selector) ? selector[0] : selector);
 
   if (target.pageId) {
-    // One page named directly. Its title comes back with the export status, so
-    // there is nothing worth an extra read here.
-    return {
-      items: [{
-        ref: { docId: target.docId, pageId: target.pageId },
-        id: `coda:${target.docId}/${target.pageId}`,
-        title: target.pageId,
-      }],
-      skipped: [],
-    };
+    const page = await findPage(a, target.docId, target.pageId, opts);
+    // An explicit page that cannot export is worth saying out loud, unlike one
+    // walked past inside a doc.
+    if (!isCanvas(page)) {
+      return {
+        items: [],
+        skipped: [{ id: `coda:${target.docId}/${page.id}`, reason: `no exportable content (${page.contentType})` }],
+      };
+    }
+    return { items: [itemFor(target.docId, page)], skipped: [] };
   }
 
   if (target.docId) return pagesOf(a, target.docId, { since, opts });
