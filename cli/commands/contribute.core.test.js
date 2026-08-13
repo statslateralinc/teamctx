@@ -38,7 +38,7 @@ vi.mock('../../src/prefs.js', () => ({
   resolveDisplayName: vi.fn(async ({ actor, config }) => actor?.name || config?.me || 'unknown'),
 }));
 
-import { contributeCore } from './contribute.core.js';
+import { contributeCore, sourceTrailer } from './contribute.core.js';
 import { ManagerGateError } from './review.core.js';
 import { readConfig, writeWorkstream, writeQueueItem, appendContribution } from '../../src/storage.js';
 import { commitContext } from '../../src/git.js';
@@ -139,5 +139,41 @@ describe('contributeCore — the apply gate ignores the claimed author', () => {
     readConfig.mockReturnValue({ project: 'p', me: 'someone', managerKey: 'github:42', autoPush: false, roles: [] });
     const r = await contributeCore({ text: 'note', apply: true });
     expect(r.mode).toBe('applied');
+  });
+});
+
+describe('provenance reaches the git history', () => {
+  it('names the source in the commit body, not the subject', () => {
+    // `git log .teamctx/` is the audit trail — it is what `teamctx stats` will
+    // walk. A Slack source is far too long for a subject line, and truncating
+    // it would destroy the only property worth recording: that you can follow
+    // it back to the artifact.
+    expect(sourceTrailer('import:slack:C0BPPEJVBV4/p1786543526387459'))
+      .toBe('\n\nSource: import:slack:C0BPPEJVBV4/p1786543526387459');
+  });
+
+  it('says nothing for a typed contribution', () => {
+    // Noting `cli` on every commit would be noise on the common case.
+    expect(sourceTrailer('cli')).toBe('');
+    expect(sourceTrailer(undefined)).toBe('');
+  });
+
+  it('covers every non-default source, not just the one that existed first', () => {
+    // Only `mcp` was ever named, so web and imported contributions were
+    // indistinguishable from typed ones in the history.
+    for (const s of ['mcp', 'web', 'import:docs/plan.md', 'import:slack:C1/p2']) {
+      expect(sourceTrailer(s), `${s} should be recorded`).toContain(`Source: ${s}`);
+    }
+  });
+
+  it('records the source on the queued commit', async () => {
+    // Imports go through the queued path, so this is the commit that exists
+    // for an imported contribution until a manager approves it.
+    readConfig.mockReturnValue({ project: 'p', me: 'alice', autoPush: false, roles: [] });
+    await contributeCore({ text: 'note', source: 'import:slack:C1/p2' });
+    expect(commitContext).toHaveBeenCalledWith(
+      expect.stringContaining('Source: import:slack:C1/p2'),
+      undefined,
+    );
   });
 });

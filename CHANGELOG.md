@@ -48,8 +48,57 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Within one run, each document is told what earlier ones already proposed, so
   three files describing the same decision produce one contribution rather than
   three near-duplicates for the manager to reject. Closes #20.
+- **Import connectors.** `teamctx import --from <connector> <selector…>` — a
+  connector turns a source into the documents import already knows how to
+  distill, and nothing else: no AI calls, no queue writes, no dedupe, all of
+  which are shared and already built. `auth → list → fetch`, with `list`
+  separate so `--dry-run` can report what would be pulled without downloading
+  it. Credentials come from the environment, never from the committed
+  `config.json`.
+  Local paths resolve to the built-in `folder` connector, so every import
+  exercises the contract rather than leaving it to drift until the first remote
+  source is written. Whatever a connector returns goes through the same
+  document rules a local file does.
+  `--since` bounds how far back a connector looks. Meaningless for a folder and
+  the difference between a usable import and a drowned review queue for a chat
+  or wiki source, so it sits on the shared surface rather than inside one
+  connector.
+  Individual sources (Slack, Drive, Microsoft 365, Dropbox, Notion, Coda) land
+  one PR each on top of this. Design notes:
+  [docs/proposals/import-connectors.md](docs/proposals/import-connectors.md).
+  Closes #21.
+- **Notion connector.** `teamctx import --from notion <page-link|page-id>` — a
+  page becomes one proposed contribution, and a *child* page becomes a separate
+  one rather than being folded into its parent, so importing a handbook gives a
+  manager one reviewable item per page instead of one the size of the handbook.
+  Run it with no selector to import everything shared with your integration.
+  (The connector honours a `since` window; the `--since` flag that reaches it
+  from the command line lands with the Slack connector, #22.)
+  Page content is a block tree rather than a body: `blocks/{id}/children`
+  returns one level at a time, so blocks, nested toggles, lists, callouts,
+  quotes, code and tables are walked and rendered as markdown for the distiller.
+  Blocks carrying no text — images, embeds, breadcrumbs — are dropped the way an
+  unsupported file inside a directory already is.
+  Credentials are your own integration token from `NOTION_TOKEN`. A new
+  integration can see nothing until you open a page in Notion and use
+  ••• → Add connections; access then cascades to child pages, which means the
+  explicit selection the connector contract asks for has already happened in
+  Notion's own UI. Requests are paced to Notion's ~3/second and honour
+  `Retry-After` on 429 and 529. Databases are reported as skipped rather than
+  imported. Design notes:
+  [docs/proposals/import-notion.md](docs/proposals/import-notion.md). Closes #26.
 
 ### Changed
+- **Contributions record where they came from in the git history.** The commit
+  body carries `Source: import:docs/plan.md` (or `web`, `mcp`, and
+  `import:<id>` for whatever a connector returns) on the queue commit and again
+  when a manager approves it. Previously only `mcp` was named, and only on the
+  applied path, so an imported contribution was indistinguishable from a typed
+  one in `git log .teamctx/` — which is the audit trail, and what `teamctx
+  stats` will walk. In the body rather than the subject: a remote id can run to
+  `import:slack:C0421/p1699887654123456`, and truncating it to fit a subject
+  destroys the one property worth recording, that you can follow it back to the
+  artifact. A typed contribution still says nothing.
 - `workstream_use` / `teamctx workstream use` now records a personal
   preference. It no longer writes `activeWorkstream` to the shared config, and
   no longer creates a commit — switching workstream stopped moving everyone

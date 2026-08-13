@@ -95,6 +95,46 @@ function walk(dir, { extensions, ignoredDirs }, out = []) {
 }
 
 /**
+ * Apply the rules every document has to satisfy, wherever it came from.
+ *
+ * Returns either `{ document }` or `{ skipped }` — never throws, because one
+ * unusable item should not abandon the other twenty-nine.
+ *
+ * Connectors call this on whatever they fetch, so a Slack thread that is
+ * whitespace or half a megabyte is rejected for exactly the reason a local file
+ * would be. Without a shared rule each connector invents its own, and the
+ * skipped-file report stops meaning one thing.
+ */
+export function normalizeDocument({ id, title, text, source = 'file', titleHint }, { maxBytes = DEFAULT_MAX_BYTES } = {}) {
+  if (!id) return { skipped: { id: '(unknown)', reason: 'no id' } };
+
+  const clean = typeof text === 'string' ? stripBom(text) : '';
+  if (!clean.trim()) return { skipped: { id, reason: 'empty' } };
+
+  const bytes = Buffer.byteLength(clean, 'utf8');
+  if (bytes > maxBytes) {
+    return {
+      skipped: {
+        id,
+        reason: `too large (${Math.round(bytes / 1024)}KB, limit ${Math.round(maxBytes / 1024)}KB)`,
+      },
+    };
+  }
+
+  return {
+    document: {
+      id,
+      // A connector that knows its own title wins; otherwise fall back to the
+      // markdown heading, then to whatever name the source suggests.
+      title: (title && String(title).trim()) || titleFor(clean, titleHint || id),
+      text: clean,
+      bytes,
+      source,
+    },
+  };
+}
+
+/**
  * Read the given files and directories into normalized documents.
  *
  * A path that does not exist throws. Silently importing nothing because of a
@@ -140,6 +180,9 @@ export function readDocuments(paths, {
 
     let raw;
     try {
+      // Checked against the file size before reading, so an oversized file is
+      // rejected without being pulled into memory first. normalizeDocument
+      // re-checks the decoded text; a connector has no stat() to lean on.
       const { size } = statSync(abs);
       if (size > maxBytes) {
         skipped.push({ id, reason: `too large (${Math.round(size / 1024)}KB, limit ${Math.round(maxBytes / 1024)}KB)` });
@@ -151,19 +194,9 @@ export function readDocuments(paths, {
       continue;
     }
 
-    const text = stripBom(raw);
-    if (!text.trim()) {
-      skipped.push({ id, reason: 'empty' });
-      continue;
-    }
-
-    documents.push({
-      id,
-      title: titleFor(text, abs),
-      text,
-      bytes: Buffer.byteLength(text, 'utf8'),
-      source: 'file',
-    });
+    const result = normalizeDocument({ id, text: raw, source: 'file', titleHint: abs }, { maxBytes });
+    if (result.skipped) skipped.push(result.skipped);
+    else documents.push(result.document);
   }
 
   return { documents, skipped };
