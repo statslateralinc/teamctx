@@ -67,6 +67,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   one PR each on top of this. Design notes:
   [docs/proposals/import-connectors.md](docs/proposals/import-connectors.md).
   Closes #21.
+- **Notion connector.** `teamctx import --from notion <page-link|page-id>` — a
+  page becomes one proposed contribution, and a *child* page becomes a separate
+  one rather than being folded into its parent, so importing a handbook gives a
+  manager one reviewable item per page instead of one the size of the handbook.
+  Run it with no selector to import everything shared with your integration.
+  (The connector honours a `since` window; the `--since` flag that reaches it
+  from the command line lands with the Slack connector, #22.)
+  Page content is a block tree rather than a body: `blocks/{id}/children`
+  returns one level at a time, so blocks, nested toggles, lists, callouts,
+  quotes, code and tables are walked and rendered as markdown for the distiller.
+  Blocks carrying no text — images, embeds, breadcrumbs — are dropped the way an
+  unsupported file inside a directory already is.
+  Credentials are your own integration token from `NOTION_TOKEN`. A new
+  integration can see nothing until you open a page in Notion and use
+  ••• → Add connections; access then cascades to child pages, which means the
+  explicit selection the connector contract asks for has already happened in
+  Notion's own UI. Requests are paced to Notion's ~3/second and honour
+  `Retry-After` on 429 and 529. Databases are reported as skipped rather than
+  imported. Design notes:
+  [docs/proposals/import-notion.md](docs/proposals/import-notion.md). Closes #26.
 
 ### Changed
 - **Contributions record where they came from in the git history.** The commit
