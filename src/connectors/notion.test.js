@@ -135,6 +135,32 @@ describe('renderBlocks', () => {
     ].join('\n'));
   });
 
+  it('numbers an ordered list by position, and restarts after a break', () => {
+    // Notion stores no number — position in the run is the number. Emitting a
+    // literal "1." each time is valid markdown but reads as wrong to both the
+    // distiller and the reviewer, who see the raw text.
+    const md = notion.renderBlocks([
+      block('numbered_list_item', { rich_text: rt('first') }),
+      block('numbered_list_item', { rich_text: rt('second') }),
+      block('numbered_list_item', { rich_text: rt('third') }),
+      block('paragraph', { rich_text: rt('an aside') }),
+      block('numbered_list_item', { rich_text: rt('one again') }),
+    ]);
+    expect(md).toBe('1. first\n2. second\n3. third\nan aside\n1. one again');
+  });
+
+  it('numbers each nesting level independently', () => {
+    const md = notion.renderBlocks([
+      block('numbered_list_item', { rich_text: rt('outer') }, {
+        __children: [
+          block('numbered_list_item', { rich_text: rt('inner a') }),
+          block('numbered_list_item', { rich_text: rt('inner b') }),
+        ],
+      }),
+    ]);
+    expect(md).toBe('1. outer\n  1. inner a\n  2. inner b');
+  });
+
   it('renders a callout with its emoji and a code block with its language', () => {
     expect(notion.renderBlocks([block('callout', { rich_text: rt('careful'), icon: { emoji: '⚠️' } })]))
       .toBe('> ⚠️ careful');

@@ -213,12 +213,20 @@ function renderTable(block, indent) {
 export function renderBlocks(blocks = [], depth = 0) {
   const indent = '  '.repeat(depth);
   const lines = [];
+  // Notion does not number its list items; the position in the run is the
+  // number. Emitting a literal "1." for each is valid markdown — renderers
+  // renumber — but the distiller and the reviewer reading the queue both see
+  // the raw text, where "1. 1. 1." is just wrong. Resets whenever the run is
+  // interrupted, and nesting takes care of itself because each depth recurses
+  // into its own call.
+  let ordinal = 0;
 
   for (const block of blocks) {
     const type = block?.type;
     const data = block?.[type] || {};
     const text = richText(data.rich_text || []);
     const kids = block.__children || [];
+    if (type !== 'numbered_list_item') ordinal = 0;
 
     switch (type) {
       case 'paragraph':
@@ -231,9 +239,7 @@ export function renderBlocks(blocks = [], depth = 0) {
       case 'toggle':
         lines.push(`${indent}- ${text}`);
         break;
-      // Always "1." — markdown renumbers on render, and the distiller reads
-      // the sentence rather than counting.
-      case 'numbered_list_item': lines.push(`${indent}1. ${text}`); break;
+      case 'numbered_list_item': lines.push(`${indent}${++ordinal}. ${text}`); break;
       case 'to_do': lines.push(`${indent}- [${data.checked ? 'x' : ' '}] ${text}`); break;
       case 'quote': lines.push(`${indent}> ${text}`); break;
       case 'callout': {
