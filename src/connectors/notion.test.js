@@ -230,6 +230,38 @@ describe('list — a page and the pages beneath it', () => {
     expect(items.map(i => i.id)).toEqual([`notion:${DASHED}`, 'notion:child-1']);
   });
 
+  it('keeps descending: a grandchild and a great-grandchild are their own documents', async () => {
+    // A wiki is pages inside pages inside pages. The walk is breadth-first over
+    // a queue rather than a single pass, so depth is unbounded — but the real
+    // test doc was only two levels deep, so nothing exercised this live.
+    globalThis.fetch = route([
+      [`pages/${DASHED}`, json(page(DASHED, 'Root'))],
+      [`blocks/${DASHED}/children`, results([block('child_page', { title: 'Child' }, { id: 'c1', has_children: true })])],
+      ['blocks/c1/children', results([block('child_page', { title: 'Grandchild' }, { id: 'c2', has_children: true })])],
+      ['blocks/c2/children', results([block('child_page', { title: 'Great-grandchild' }, { id: 'c3', has_children: true })])],
+      ['blocks/c3/children', results([block('paragraph', { rich_text: rt('the bottom') })])],
+    ]);
+
+    const { items } = await notion.list(authed(), DASHED);
+    expect(items.map(i => i.title)).toEqual(['Root', 'Child', 'Grandchild', 'Great-grandchild']);
+  });
+
+  it('finds a child page buried inside a block, not just at the top level', async () => {
+    // People nest pages inside toggles and columns constantly; only scanning a
+    // page's first level of blocks would silently drop those.
+    globalThis.fetch = route([
+      [`pages/${DASHED}`, json(page(DASHED, 'Root'))],
+      [`blocks/${DASHED}/children`, results([
+        block('toggle', { rich_text: rt('Archive') }, { id: 'tog', has_children: true }),
+      ])],
+      ['blocks/tog/children', results([block('child_page', { title: 'Buried' }, { id: 'deep', has_children: true })])],
+      ['blocks/deep/children', results([block('paragraph', { rich_text: rt('found me') })])],
+    ]);
+
+    const { items } = await notion.list(authed(), DASHED);
+    expect(items.map(i => i.title)).toEqual(['Root', 'Buried']);
+  });
+
   it('does not re-request blocks that listing already read', async () => {
     // Discovering a child page means reading its parent's blocks — the same
     // work fetch would do. Paying for it twice is the easiest mistake here.
