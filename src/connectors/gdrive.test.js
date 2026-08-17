@@ -56,10 +56,11 @@ describe('auth', () => {
     const r = gdrive.auth({});
     expect(r.ok).toBe(false);
     expect(r.help).toMatch(/GOOGLE_REFRESH_TOKEN/);
-    // Drive is the one connector with no token to copy, and the seven-day
-    // expiry is the failure that shows up a week after everything worked.
+    // Point at the command rather than reciting the OAuth dance.
+    expect(r.help, 'must name the command that fixes this').toMatch(/teamctx auth gdrive/);
+    // The seven-day expiry is the failure that shows up a week after
+    // everything worked, so it has to be said before the choice is made.
     expect(r.help, 'must warn about the Testing-mode expiry').toMatch(/seven days/);
-    expect(r.help, 'must name the scope').toMatch(/drive\.readonly/);
   });
 
   it('accepts a client id, secret and refresh token', () => {
@@ -86,6 +87,106 @@ describe('auth', () => {
     const spy = vi.spyOn(globalThis, 'fetch');
     gdrive.auth({ GOOGLE_CLIENT_ID: 'c', GOOGLE_CLIENT_SECRET: 's', GOOGLE_REFRESH_TOKEN: 'r' });
     expect(spy).not.toHaveBeenCalled();
+  });
+});
+
+describe('authorize', () => {
+  const answers = list => { const q = [...list]; return async () => q.shift() ?? ''; };
+  const loopback = (over = {}) => async ({ buildUrl }) => ({
+    code: 'the-code',
+    redirectUri: 'http://127.0.0.1:54321',
+    url: buildUrl('http://127.0.0.1:54321', 'st4te'),
+    ...over,
+  });
+  /** Capture the authorize URL the connector asks the listener to show. */
+  const captureUrl = () => {
+    const seen = {};
+    return [seen, async ({ buildUrl }) => {
+      seen.url = buildUrl('http://127.0.0.1:54321', 'st4te');
+      return { code: 'the-code', redirectUri: 'http://127.0.0.1:54321' };
+    }];
+  };
+  const exchanged = body => vi.fn(async (url, init) => {
+    calls.push({ url: String(url), method: init?.method, body: init?.body });
+    return { ok: true, status: 200, json: async () => body };
+  });
+
+  it('returns the three variables the connector reads', async () => {
+    globalThis.fetch = exchanged({ refresh_token: 'r-live', access_token: 'ya29.x' });
+    const values = await gdrive.authorize({
+      ask: answers(['cid', 'csecret']), loopback: loopback(),
+    });
+    expect(values).toEqual({
+      GOOGLE_CLIENT_ID: 'cid',
+      GOOGLE_CLIENT_SECRET: 'csecret',
+      GOOGLE_REFRESH_TOKEN: 'r-live',
+    });
+  });
+
+  it('asks for offline access and forces the consent screen', async () => {
+    // access_type=offline is what produces a refresh token at all. prompt=consent
+    // is what makes Google produce one *again* — without it, re-running this to
+    // repair a broken login appears to work and hands back nothing.
+    const [seen, lb] = captureUrl();
+    globalThis.fetch = exchanged({ refresh_token: 'r' });
+    await gdrive.authorize({ ask: answers(['cid', 's']), loopback: lb });
+
+    expect(seen.url).toContain('access_type=offline');
+    expect(seen.url).toContain('prompt=consent');
+    expect(decodeURIComponent(seen.url)).toContain(gdrive.SCOPE);
+    expect(seen.url).toContain('state=st4te');
+  });
+
+  it('sends the same redirect_uri it was authorized with', async () => {
+    // Google compares them exactly, port included, and the port is not known
+    // until the listener has bound.
+    globalThis.fetch = exchanged({ refresh_token: 'r' });
+    await gdrive.authorize({ ask: answers(['cid', 's']), loopback: loopback() });
+
+    expect(calls[0].body).toContain(encodeURIComponent('http://127.0.0.1:54321'));
+    expect(calls[0].body).toContain('grant_type=authorization_code');
+  });
+
+  it('routes the client secret through the masking prompt', async () => {
+    const plain = [];
+    const masked = [];
+    globalThis.fetch = exchanged({ refresh_token: 'r' });
+    await gdrive.authorize({
+      ask: async (q, d) => { plain.push(q); return d || 'x'; },
+      askSecret: async (q, d) => { masked.push(q); return d || 'x'; },
+      loopback: loopback(),
+      env: { GOOGLE_CLIENT_ID: 'cid', GOOGLE_CLIENT_SECRET: 'the-real-secret' },
+    });
+    expect(masked).toContain('Client secret');
+    expect(plain, 'a client id is public; the secret is not').not.toContain('Client secret');
+  });
+
+  it('explains a response with no refresh token instead of saving a one-hour login', async () => {
+    // Google omits it when this account has already consented to the client.
+    globalThis.fetch = exchanged({ access_token: 'ya29.short' });
+    await expect(gdrive.authorize({ ask: answers(['c', 's']), loopback: loopback() }))
+      .rejects.toThrow(/revoke it at myaccount\.google\.com\/permissions/);
+  });
+
+  it('explains a stale authorization code', async () => {
+    globalThis.fetch = vi.fn(async () => ({
+      ok: false, status: 400, json: async () => ({ error: 'invalid_grant' }),
+    }));
+    await expect(gdrive.authorize({ ask: answers(['c', 's']), loopback: loopback() }))
+      .rejects.toThrow(/single-use/);
+  });
+
+  it('says so when run without the loopback listener', async () => {
+    // Google removed the paste-a-code flow, so there is no fallback path.
+    await expect(gdrive.authorize({ ask: answers(['c', 's']) }))
+      .rejects.toThrow(/teamctx auth gdrive/);
+  });
+
+  it('stops before opening a listener if the client details are missing', async () => {
+    const lb = vi.fn();
+    await expect(gdrive.authorize({ ask: answers(['', '']), loopback: lb }))
+      .rejects.toThrow(/client ID is required/);
+    expect(lb, 'no port should be opened for a login that cannot proceed').not.toHaveBeenCalled();
   });
 });
 

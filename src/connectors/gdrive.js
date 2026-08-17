@@ -71,14 +71,12 @@ const ID = /^[A-Za-z0-9_-]{10,}$/;
 export const name = 'gdrive';
 export const describe = 'Google Drive — a folder of documents, or a single file';
 
-const HELP = 'set GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET and GOOGLE_REFRESH_TOKEN in '
-  + '.env.local. Drive has no token to copy: in Google Cloud console create a project, '
-  + 'enable the Drive API, create an OAuth client of type "Desktop app", then run the '
-  + 'consent flow once for the scope https://www.googleapis.com/auth/drive.readonly and '
-  + 'keep the refresh token it returns. Set the consent screen\'s user type to Internal '
+const HELP = 'run `teamctx auth gdrive` — it walks through creating the Google Cloud '
+  + 'project and OAuth client, then saves GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET and '
+  + 'GOOGLE_REFRESH_TOKEN to .env.local. Set the consent screen\'s user type to Internal '
   + 'if you are on Google Workspace — an External client left in "Testing" hands back '
   + 'refresh tokens that stop working after seven days. A GOOGLE_ACCESS_TOKEN on its own '
-  + 'also works for one hour, which is enough to try this out.';
+  + 'also works for about an hour, which is enough to try this out.';
 
 /**
  * Synchronous on purpose, though a refresh token is not a usable credential.
@@ -107,6 +105,99 @@ export function auth(env = process.env) {
     // A pasted access token cannot be renewed, so it is treated as valid until
     // Google says otherwise rather than refreshed on a schedule we cannot keep.
     expiresAt: accessToken && !refreshToken ? Infinity : 0,
+  };
+}
+
+export const SCOPE = 'https://www.googleapis.com/auth/drive.readonly';
+
+/**
+ * Walk the user through getting a refresh token, once.
+ *
+ * Dropbox can do this without a redirect URI at all — it shows the user a code
+ * to paste back. Google allowed the same until it
+ * [removed the out-of-band flow in January 2023](https://developers.google.com/identity/protocols/oauth2/resources/oob-migration),
+ * so a loopback listener is the only supported route for a desktop app. That
+ * listener is shared (`cli/oauth-loopback.js`) rather than built here: a
+ * connector that opens a socket has stopped being a fetch adapter.
+ *
+ * `access_type=offline` and `prompt=consent` are both load-bearing. Without the
+ * first there is no refresh token; without the second Google silently omits it
+ * on every authorization after the first, so re-running this command to fix a
+ * broken login would appear to work and change nothing.
+ */
+export async function authorize({ ask, askSecret = ask, loopback, env = process.env, log = () => {} } = {}) {
+  if (typeof loopback !== 'function') {
+    throw new Error('gdrive: this login needs the loopback helper — run it through `teamctx auth gdrive`');
+  }
+
+  log(`
+Google Drive needs an OAuth client of your own. teamctx ships none, so no quota
+is pooled and no third party sits between your team and your files.
+
+  1. Open https://console.cloud.google.com/projectcreate and make a project
+  2. Enable the Drive API:
+     https://console.cloud.google.com/apis/library/drive.googleapis.com
+  3. OAuth consent screen: choose Internal if you are on Google Workspace.
+     Choosing External leaves the app in "Testing", and Google then expires
+     your login after seven days.
+  4. Credentials → Create credentials → OAuth client ID → type "Desktop app"
+  5. Copy the Client ID and Client secret
+`);
+
+  const clientId = (await ask('Client ID', env.GOOGLE_CLIENT_ID || '')) || '';
+  if (!clientId) throw new Error('gdrive: a client ID is required');
+  const clientSecret = (await askSecret('Client secret', env.GOOGLE_CLIENT_SECRET || '')) || '';
+  if (!clientSecret) throw new Error('gdrive: a client secret is required');
+
+  const { code, redirectUri } = await loopback({
+    log,
+    buildUrl: (uri, state) => 'https://accounts.google.com/o/oauth2/v2/auth?'
+      + new URLSearchParams({
+        client_id: clientId,
+        redirect_uri: uri,
+        response_type: 'code',
+        scope: SCOPE,
+        // Without this there is no refresh token and the login dies in an hour.
+        access_type: 'offline',
+        // Google returns a refresh token only on the *first* consent unless
+        // asked again — so without this, re-running to repair a broken login
+        // would look like it worked and hand back nothing.
+        prompt: 'consent',
+        state,
+      }).toString(),
+  });
+
+  const res = await globalThis.fetch(TOKEN_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({
+      code,
+      grant_type: 'authorization_code',
+      client_id: clientId,
+      client_secret: clientSecret,
+      // Must match the authorize call exactly, port included.
+      redirect_uri: redirectUri,
+    }).toString(),
+  });
+  const json = await res.json().catch(() => ({}));
+
+  if (!res.ok) {
+    if (String(json?.error || '') === 'invalid_grant') {
+      throw new Error('gdrive: that authorization code was rejected. Codes are single-use '
+        + 'and expire within minutes — run the command again for a fresh one.');
+    }
+    throw new DriveError(res.status, json);
+  }
+  if (!json.refresh_token) {
+    throw new Error('gdrive: Google returned no refresh token, so the login would expire in '
+      + 'an hour. That happens when this account has already authorized the client — revoke '
+      + 'it at myaccount.google.com/permissions and run this again.');
+  }
+
+  return {
+    GOOGLE_CLIENT_ID: clientId,
+    GOOGLE_CLIENT_SECRET: clientSecret,
+    GOOGLE_REFRESH_TOKEN: json.refresh_token,
   };
 }
 
