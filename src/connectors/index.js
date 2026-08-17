@@ -1,3 +1,4 @@
+import * as dropbox from './dropbox.js';
 import * as folder from './folder.js';
 
 /**
@@ -42,7 +43,7 @@ import * as folder from './folder.js';
  * secret live once in cli/commands/auth.core.js.
  */
 
-const CONNECTORS = { folder };
+const CONNECTORS = { dropbox, folder };
 
 export class UnknownConnectorError extends Error {
   constructor(name) {
