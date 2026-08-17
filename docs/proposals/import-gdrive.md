@@ -116,6 +116,19 @@ seven-day warning.
 `GOOGLE_ACCESS_TOKEN` is also accepted, unrefreshed, so the connector can be
 exercised with a token from the OAuth Playground without a client secret.
 
+Two things that look like shortcuts and are not, recorded so nobody re-proposes
+them:
+
+- **`context-import.md` leaves "device-code flow vs. pasted tokens for CLI-only
+  users" open.** For Drive it is settled: the device flow cannot request
+  `drive.readonly` at all. Pasted credentials are not a preference here, they
+  are the only option.
+- **`gcloud auth application-default login --scopes=…/drive.readonly` does not
+  help.** Adding a non-Cloud scope requires `--client-id-file` pointing at an
+  OAuth client you created yourself, so it skips none of the setup — it only
+  replaces the last step, and leaves the credentials somewhere teamctx would
+  have to go looking for.
+
 ### 2. A file is a document; a folder is a selector
 
 The same rule Notion's walk turned on. Recurse *through* folders for structure,
@@ -152,27 +165,38 @@ selection can happen.
 | `…apps.document` (Google Doc) | `files.export?mimeType=text/markdown` — native markdown |
 | `text/markdown`, `text/plain` (uploaded) | `files.get?alt=media` |
 | `…apps.folder` | recurse; not a document |
+| `…apps.presentation` (Slides) | `files.export?mimeType=text/plain` |
 | `…apps.spreadsheet` | **skipped**, with a reason |
-| `…apps.presentation` | **skipped**, with a reason |
-| everything else (PDF, `.docx`, images) | `unsupported type`, matching `folder` |
+| everything else — PDF, `.docx`, images, video, `.apk`, any binary | `unsupported type`, matching `folder` |
 
 Markdown export for Docs is [the documented
 format](https://developers.google.com/workspace/drive/api/guides/ref-export-formats)
 and it is the reason this connector is small: headings, lists, tables and links
 arrive already rendered, so there is no equivalent of Notion's block renderer.
 
-The two Google-native skips are deliberate, not laziness:
+**Sheets is the only Google-native skip.** It cannot export text at all — the
+formats are CSV and TSV, and only for the first sheet. A spreadsheet is records
+rather than reasoning, which is the wrong shape for a context tree. Same call
+the Notion proposal made about databases.
 
-- **Sheets cannot export text at all** — only CSV, and only the first sheet. A
-  spreadsheet is records rather than reasoning, which is the wrong shape for a
-  context tree. Same call the Notion proposal made about databases.
-- **Slides exports `text/plain` for the first slide only.** A deck that imports
-  as one slide is worse than a deck that does not import, because it looks like
-  it worked. *(Worth re-confirming against a real deck during implementation —
-  if it turns out to export the whole thing, Slides moves in.)*
+Slides *is* in, via `text/plain`. The "first-slide only" caveat in Google's
+export table applies to the image formats (`image/jpeg`, `image/png`,
+`image/svg+xml`), not to text. A deck's plain-text export is bullet fragments
+without speaker notes, which is thin — but a decision presented to the team is
+often only ever written down on a slide, and thin-but-real context is what the
+review queue exists to judge. Let the manager reject it.
 
-Skips carry a reason and appear in the `--dry-run` output, the way `folder`
-reports a `.png`. Silence would read as a bug.
+### The filter runs in `list`, not in `fetch`
+
+This matters more than it looks. A real Drive is mostly photos, video, installers
+and zip files — a folder of documents is the exception, not the rule. The
+mimeType arrives as *metadata* from `files.list`, so the decision to skip a 2GB
+video is made before a single byte of it is requested. Nothing unreadable is ever
+downloaded, and `--dry-run` can report the whole folder for the cost of one
+listing call.
+
+Skips carry a reason and appear in that output, the way `folder` reports a
+`.png`. Silence would read as a bug.
 
 ### 5. Details that are easy to get wrong
 
@@ -194,10 +218,10 @@ reports a `.png`. Silence would read as a bug.
 
 ## Scope
 
-**In:** Google Docs, uploaded `.md`/`.txt`, folders (recursive), shared drives,
-`--since`.
+**In:** Google Docs, Google Slides, uploaded `.md`/`.txt`, folders (recursive),
+shared drives, `--since`.
 
-**Out:** Sheets, Slides, PDFs and other binaries; comments and suggestions
+**Out:** Sheets, PDFs and other binaries; comments and suggestions
 (where the actual decision often is — same gap Notion has, same follow-up);
 revision history; anything that writes to Drive. Read-only scope makes the last
 one structural rather than a promise, which is the right way round.
@@ -224,12 +248,11 @@ one structural rather than a promise, which is the right way round.
   one command — and would break the rule that connectors are thin adapters,
   since it needs a listener and a place to write. Worth the exception, or is
   documentation enough?
-- **Is `gcloud auth application-default login --scopes=…/drive.readonly` a
-  better first instruction?** It writes client id, secret and refresh token to
-  one file against Google's own published client, sidestepping both the GCP
-  project setup and the seven-day expiry. Most of this project's users have
-  `gcloud`. *Needs verifying that arbitrary scopes are accepted there before it
-  goes in the help text.*
+- **`rclone` decided the opposite way.** It has the same problem — user's own
+  client id, restricted scope, refresh token — and it *does* own the flow, with
+  `rclone authorize` on a machine that has a browser and a pasted blob for
+  headless boxes. That is the most-used Drive CLI there is, so "connectors stay
+  thin" is a real position, not an obvious one. Worth deciding on purpose.
 - **Three connectors now hand-roll paging and backoff** — and all three
   differently, because the limits genuinely differ (Slack recovers, Notion
   paces, Coda has per-verb buckets, Drive barely needs it). The contract
