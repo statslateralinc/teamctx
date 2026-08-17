@@ -101,10 +101,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Credentials come from `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` and
   `GOOGLE_REFRESH_TOKEN` (or a bare `GOOGLE_ACCESS_TOKEN` for an hour), and the
   access token is exchanged lazily on the first request rather than in `auth`.
-  Drive is the one source with no token to copy — the help text walks through
-  creating an OAuth client, and warns that a consent screen left in "Testing"
-  expires refresh tokens after seven days, which is what an `invalid_grant` a
-  week later actually means. Design notes:
+  `teamctx auth gdrive` obtains them: it prints the Cloud project and OAuth
+  client setup, opens Google's consent screen against a listener bound to
+  `127.0.0.1`, and exchanges the code. Google
+  [removed the paste-a-code flow in 2023](https://developers.google.com/identity/protocols/oauth2/resources/oob-migration),
+  so a loopback listener is the only supported desktop route — unlike Dropbox,
+  which needs no redirect at all. The consent request asks for `access_type=offline`
+  *and* `prompt=consent`: without the second, Google omits the refresh token on
+  every authorization after the first, so re-running the command to repair a
+  broken login would appear to work and change nothing.
+  Drive is the one source with no token to copy, and the help warns that a
+  consent screen left in "Testing" expires refresh tokens after seven days —
+  which is what an `invalid_grant` a week later actually means.
+  Setup and troubleshooting: [docs/import-gdrive.md](docs/import-gdrive.md).
+  Design notes:
   [docs/proposals/import-gdrive.md](docs/proposals/import-gdrive.md). Closes #23.
 
 ### Changed
