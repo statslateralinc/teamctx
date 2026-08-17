@@ -336,9 +336,15 @@ export function classify(entry) {
 
   if (entry?.is_downloadable === false) {
     const as = entry?.export_info?.export_as;
-    if (as === 'markdown') return { exportAs: 'markdown' };
-    // A Google Doc kept in Dropbox reports `docx` here, so the export path is
-    // not a way around the OOXML problem — it lands in the same place.
+    // `export_as` is the format Dropbox would hand over by *default*, not the
+    // only one it will produce — `files/export` takes an `export_format` that
+    // overrides it. Live testing settled this: every Paper doc reports `html`,
+    // and asking for markdown anyway returns clean markdown. Reading the field
+    // as a constraint skipped the best content in Dropbox.
+    if (as === 'markdown' || as === 'html') return { exportAs: 'markdown' };
+    // A Google Doc kept in Dropbox reports `docx`, and no export_format makes
+    // that text — so the export path is not a way around the OOXML problem, it
+    // lands in the same place.
     return {
       skip: as
         ? `exports only as ${as} — needs the Word reader, which is not built yet`
@@ -354,7 +360,14 @@ export function classify(entry) {
   return { skip: `unsupported type (${ext ? `.${ext}` : 'no extension'})` };
 }
 
-const idFor = entry => `dropbox:${entry.id || entry.path_lower}`;
+/**
+ * The path, not the opaque file id.
+ *
+ * `id:jaCD21w5Yr0AAAAAAAAABQ` in a skip line tells a reader nothing about which
+ * of their files was rejected, and it disagreed with what `fetch` reports for
+ * the same document. `path_display` keeps the casing a human typed.
+ */
+const idFor = entry => `dropbox:${entry.path_display || entry.path_lower || entry.id}`;
 
 const itemFor = (entry, kind, link) => ({
   ref: {
@@ -440,6 +453,38 @@ function collect(source, { since, link }) {
   return { items, skipped };
 }
 
+/** What an App-folder token looks like from the inside: everything is missing,
+ *  and nothing in the error says why. */
+const SANDBOXED = 'this app can see nothing at all, anywhere. That almost always means it was '
+  + 'created with "App folder" access rather than "Full Dropbox", so it only ever sees '
+  + '/Apps/<app name> however much is in the rest of your Dropbox. The access type is fixed '
+  + 'when the app is created and cannot be changed afterwards — make a new app at '
+  + 'dropbox.com/developers/apps, choose "Full Dropbox", and run `teamctx auth dropbox` again.';
+
+/**
+ * Turn "no such path" into something a person can act on.
+ *
+ * On its own that error cannot distinguish a typo from an App-folder token that
+ * is looking at an empty sandbox — and the second case is invisible from the
+ * outside, because every path is equally missing. One extra call on the failure
+ * path buys the difference between "check the spelling" and the actual answer.
+ */
+async function explainMissing(a, path, opts, original) {
+  let entries;
+  try {
+    entries = (await rpc(a, 'files/list_folder', { path: '', limit: 25 }, opts)).entries || [];
+  } catch {
+    return original;              // the explanation is a nicety; never mask the real error
+  }
+
+  if (entries.length === 0) return new Error(`dropbox: no "${path}", and ${SANDBOXED}`);
+
+  const names = entries.slice(0, 10)
+    .map(e => (e['.tag'] === 'folder' ? `${e.name}/` : e.name)).join(', ');
+  return new Error(`dropbox: no "${path}". At the top level this app can see: ${names}`
+    + `${entries.length > 10 ? ', …' : ''}`);
+}
+
 export async function list(a, selector, { since, ...opts } = {}) {
   const target = parseSelector(Array.isArray(selector) ? selector[0] : selector);
 
@@ -458,15 +503,21 @@ export async function list(a, selector, { since, ...opts } = {}) {
     return collect(all, { since, link: target.link });
   }
 
-  const meta = await rpc(a, 'files/get_metadata', { path: target.path }, opts).catch(err => {
+  const meta = await rpc(a, 'files/get_metadata', { path: target.path }, opts).catch(async err => {
     // The root has no metadata of its own; treat it as the folder it is.
     if (target.path === '') return { '.tag': 'folder' };
+    if (err.tag === 'path/not_found') throw await explainMissing(a, target.path, opts, err);
     throw err;
   });
   if (meta['.tag'] !== 'folder') return collect([meta], {});
 
   const all = [];
   for await (const entry of entries(a, { path: target.path }, opts)) all.push(entry);
+  // An empty *root* is the same sandboxed token seen from the other side: no
+  // error to attach an explanation to, just a silent "Nothing to import".
+  if (all.length === 0 && target.path === '') {
+    return { items: [], skipped: [{ id: 'dropbox:', reason: SANDBOXED }] };
+  }
   return collect(all, { since });
 }
 
@@ -493,7 +544,9 @@ export async function fetch(a, ref, opts = {}) {
   }
 
   return {
-    id: `dropbox:${ref.path || ref.link}`,
+    // Matches what `list` reported, so a skip line and a queued contribution
+    // name the same document the same way.
+    id: `dropbox:${ref.display || ref.path || ref.link}`,
     title: ref.title || ref.display || String(ref.path),
     text,
   };

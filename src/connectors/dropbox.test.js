@@ -269,9 +269,13 @@ describe('classify', () => {
     }
   });
 
-  it('exports a Paper doc as markdown, because Dropbox says so', () => {
-    // The routing reads is_downloadable/export_as rather than the extension,
-    // which is the part of this connector worth copying.
+  it('exports a Paper doc as markdown, whatever default Dropbox names', () => {
+    // Every real Paper doc reports export_as: "html" — the field is the
+    // default format, not a constraint, and files/export honours an
+    // export_format that overrides it. Treating it as a constraint skipped the
+    // best content in Dropbox, which only live testing revealed.
+    expect(dropbox.classify(paper('Decisions.paper', { export_info: { export_as: 'html' } })))
+      .toEqual({ exportAs: 'markdown' });
     expect(dropbox.classify(paper('Decisions.paper'))).toEqual({ exportAs: 'markdown' });
   });
 
@@ -304,6 +308,32 @@ describe('classify', () => {
 });
 
 describe('list — a folder', () => {
+  it('names a skipped file by path, not by opaque id', async () => {
+    // "dropbox:id:jaCD21w5Yr0AAAAAAAAABQ — unsupported type" tells the reader
+    // nothing about which of their files was rejected.
+    globalThis.fetch = listing([file('holiday.jpg')]);
+
+    const r = await dropbox.list(authed(), '/Specs', nowait);
+    expect(r.skipped[0].id).toBe('dropbox:/Specs/holiday.jpg');
+  });
+
+  it('reports the same id while listing as when fetching', async () => {
+    // They disagreed: list said dropbox:id:… and fetch said dropbox:/path, so
+    // one document was named two ways between a skip line and a queue entry.
+    globalThis.fetch = listing([file('spec.md')]);
+    const r = await dropbox.list(authed(), '/Specs', nowait);
+
+    globalThis.fetch = route([['files/download', text('body')]]);
+    const doc = await dropbox.fetch(authed(), r.items[0].ref, nowait);
+    expect(doc.id).toBe(r.items[0].id);
+  });
+
+  it('keeps the casing a human typed', async () => {
+    globalThis.fetch = listing([file('Café Notes.md')]);
+    const r = await dropbox.list(authed(), '/Specs', nowait);
+    expect(r.items[0].id).toBe('dropbox:/Specs/Café Notes.md');
+  });
+
   it('returns one item per document and skips the rest', async () => {
     globalThis.fetch = listing([
       file('architecture.md'),
@@ -531,8 +561,53 @@ describe('Dropbox-API-Arg escaping', () => {
 });
 
 describe('errors', () => {
-  it('explains a path that does not exist', async () => {
-    globalThis.fetch = route([['files/get_metadata', fail(409, 'path/not_found/...')]]);
+  it('shows what the app can actually see when a path is missing', async () => {
+    // "check the spelling" is useless on its own — the whole point is that the
+    // user cannot see what the token can.
+    globalThis.fetch = route([
+      ['files/get_metadata', fail(409, 'path/not_found/...')],
+      ['files/list_folder', json({ entries: [folder('Specs'), file('readme.md')], has_more: false })],
+    ]);
+
+    await expect(dropbox.list(authed(), '/Nope', nowait))
+      .rejects.toThrow(/At the top level this app can see: Specs\/, readme\.md/);
+  });
+
+  it('names the App-folder trap when nothing is visible at all', async () => {
+    // An App-folder token makes every path equally missing, and nothing in the
+    // error says why. This is the single most likely first-run failure and it
+    // is invisible from the outside.
+    globalThis.fetch = route([
+      ['files/get_metadata', fail(409, 'path/not_found/...')],
+      ['files/list_folder', json({ entries: [], has_more: false })],
+    ]);
+
+    const err = await dropbox.list(authed(), '/teamctx-test', nowait).catch(e => e);
+    expect(err.message).toMatch(/App folder" access rather than "Full Dropbox/);
+    // The access type cannot be changed after the app is made, so telling the
+    // user to go and change a setting would send them hunting for one.
+    expect(err.message, 'must say a new app is needed').toMatch(/make a new app/);
+  });
+
+  it('explains an empty root instead of reporting nothing to import', async () => {
+    // Same sandboxed token from the other side: no error to hang an
+    // explanation on, just silence.
+    globalThis.fetch = route([
+      // The root has no metadata of its own — Dropbox rejects the call.
+      ['files/get_metadata', fail(409, 'path/malformed_path/..')],
+      ['files/list_folder', json({ entries: [], has_more: false })],
+    ]);
+
+    const r = await dropbox.list(authed(), '/', nowait);
+    expect(r.items).toEqual([]);
+    expect(r.skipped[0].reason).toMatch(/App folder/);
+  });
+
+  it('does not mask the real error if the explaining call also fails', async () => {
+    globalThis.fetch = route([
+      ['files/get_metadata', fail(409, 'path/not_found/...')],
+      ['files/list_folder', fail(401, 'invalid_access_token/')],
+    ]);
     await expect(dropbox.list(authed(), '/Nope', nowait)).rejects.toThrow(/no such path/);
   });
 
