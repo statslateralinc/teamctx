@@ -48,8 +48,78 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Within one run, each document is told what earlier ones already proposed, so
   three files describing the same decision produce one contribution rather than
   three near-duplicates for the manager to reject. Closes #20.
+- **Import connectors.** `teamctx import --from <connector> <selector…>` — a
+  connector turns a source into the documents import already knows how to
+  distill, and nothing else: no AI calls, no queue writes, no dedupe, all of
+  which are shared and already built. `auth → list → fetch`, with `list`
+  separate so `--dry-run` can report what would be pulled without downloading
+  it. Credentials come from the environment, never from the committed
+  `config.json`.
+  Local paths resolve to the built-in `folder` connector, so every import
+  exercises the contract rather than leaving it to drift until the first remote
+  source is written. Whatever a connector returns goes through the same
+  document rules a local file does.
+  `--since` bounds how far back a connector looks. Meaningless for a folder and
+  the difference between a usable import and a drowned review queue for a chat
+  or wiki source, so it sits on the shared surface rather than inside one
+  connector.
+  Individual sources (Slack, Drive, Microsoft 365, Dropbox, Notion, Coda) land
+  one PR each on top of this. Design notes:
+  [docs/proposals/import-connectors.md](docs/proposals/import-connectors.md).
+  Closes #21.
+- **`teamctx auth <connector>`** — log in to an import connector once and keep
+  working. It runs the connector's login flow and saves the resulting long-lived
+  credentials to `.env.local`.
+  Without it, a connector's help can only end with some version of "exchange it
+  once for a refresh token", which in practice means "write your own curl
+  command" — so the contract gains an optional `authorize` alongside `auth`.
+  Optional because it makes no sense for `folder`, and purely additive because
+  `auth(env)` still reads the environment: credentials set by hand keep working
+  and no existing connector changes. A connector supplies only the
+  provider-specific parts; prompting, merging the env file and never printing a
+  secret are shared.
+  The env file is merged rather than rewritten, so a provider key already living
+  there survives; it is written `0600`, only variable *names* are ever printed,
+  and a failed login writes nothing. An existing value offered back as a prompt
+  default is masked (`sl.u********TAIL`), so re-running the command never echoes
+  a live credential into scrollback.
+- **Dropbox connector.** `teamctx import --from dropbox <path|file-id|shared-link>`
+  — every document beneath a path becomes one proposed contribution. Markdown
+  and text files are downloaded; Dropbox Paper docs are exported as markdown.
+  Word documents are reported as skipped rather than half-imported: Dropbox has
+  no text conversion, and `files/export` returns `docx` even for a Google Doc
+  kept in Dropbox, so both routes need an OOXML reader that does not exist yet.
+  Spreadsheets, decks, images and other binaries are skipped with a reason.
+  Which files can be fetched, and how, comes from the listing itself —
+  `is_downloadable` and `export_info.export_as` — rather than from a table of
+  types this project would have to keep current.
+  The whole tree arrives in one request (`recursive: true`), so there is no
+  folder walk, and `--since` filters on `server_modified` in memory without
+  costing an extra call. Oversized files are skipped from the listing, before
+  anything is transferred.
+  Shared links work, including listing inside a shared folder that is not in
+  your own Dropbox. A Paper doc reached that way is reported as unexportable
+  while listing rather than failing mid-import.
+  Credentials come from `DROPBOX_APP_KEY`, `DROPBOX_APP_SECRET` and
+  `DROPBOX_REFRESH_TOKEN` (or a short-lived `DROPBOX_ACCESS_TOKEN` on its own),
+  exchanged lazily on the first request. `teamctx auth dropbox` obtains them:
+  Dropbox's code flow needs no redirect URI, so it shows you a code to paste
+  back and nothing on your machine listens on a port. Setup and troubleshooting:
+  [docs/import-dropbox.md](docs/import-dropbox.md). Design notes:
+  [docs/proposals/import-dropbox.md](docs/proposals/import-dropbox.md).
+  Closes #25.
 
 ### Changed
+- **Contributions record where they came from in the git history.** The commit
+  body carries `Source: import:docs/plan.md` (or `web`, `mcp`, and
+  `import:<id>` for whatever a connector returns) on the queue commit and again
+  when a manager approves it. Previously only `mcp` was named, and only on the
+  applied path, so an imported contribution was indistinguishable from a typed
+  one in `git log .teamctx/` — which is the audit trail, and what `teamctx
+  stats` will walk. In the body rather than the subject: a remote id can run to
+  `import:slack:C0421/p1699887654123456`, and truncating it to fit a subject
+  destroys the one property worth recording, that you can follow it back to the
+  artifact. A typed contribution still says nothing.
 - `workstream_use` / `teamctx workstream use` now records a personal
   preference. It no longer writes `activeWorkstream` to the shared config, and
   no longer creates a commit — switching workstream stopped moving everyone

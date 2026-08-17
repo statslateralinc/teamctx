@@ -10,6 +10,7 @@ import { initCommand } from './commands/init.js';
 import { roleCommand, roleAssignCommand } from './commands/role.js';
 import { contributeCommand } from './commands/contribute.js';
 import { importCommand } from './commands/import.js';
+import { authCommand } from './commands/auth.js';
 import { askCommand } from './commands/ask.js';
 import { pullCommand } from './commands/pull.js';
 import { reflectCommand } from './commands/reflect.js';
@@ -73,10 +74,15 @@ program.command('ask <question>').description("Ask a question, answered from you
   .action(askCommand);
 
 program.command('pull').description('Fetch and process pending web contributions').action(pullCommand);
-program.command('import <paths...>').description('Import local .md/.txt files as contributions for manager review')
+program.command('import [selector...]').description('Import documents as contributions for manager review')
+  .option('--from <connector>', 'Where to import from (default: folder — local .md/.txt paths)')
   .option('--workstream <id>', 'Target workstream (default: active)')
+  .option('--since <date>', 'Only import material newer than this (connectors that have a timeline)')
   .option('--dry-run', 'List what would be imported without distilling or queueing')
   .action(importCommand);
+program.command('auth <connector>').description('Log in to an import connector and save credentials to .env.local')
+  .option('--env-file <path>', 'Write to a different file (default: .env.local)')
+  .action(authCommand);
 program.command('reflect').description('AI rewrites shared context for clarity')
   .option('--workstream <id>', 'Target workstream (default: active)')
   .action(reflectCommand);

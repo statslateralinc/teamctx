@@ -7,6 +7,7 @@ import { serializeToMd, generateRoleFile } from '../../src/context.js';
 import { commitContext, pushContext } from '../../src/git.js';
 import { resolveActor } from '../../src/actor.js';
 import { resolveDisplayName } from '../../src/prefs.js';
+import { sourceTrailer } from './contribute.core.js';
 
 function workstreamDisplayName(id, workstream, config) {
   return config.workstreams?.find(w => w.id === id)?.name || workstream.name || config.project;
@@ -96,7 +97,10 @@ export async function approveReview({ id, teamctxDir, projectDir, actor } = {}) 
   const wsNote = targetId === 'main' ? '' : ` (${targetId})`;
   const approvedBy = who;
   await commitContext(
-    `context: ${item.author} contribution (approved by ${approvedBy})${note}${wsNote}`,
+    // This is the commit that actually changes shared context, so it is the one
+    // someone reads when asking where a Why came from. The queue item carried
+    // the source through review; without this it would be lost at the last step.
+    `context: ${item.author} contribution (approved by ${approvedBy})${note}${wsNote}${sourceTrailer(item.source)}`,
     projectDir ? { cwd: projectDir } : undefined,
   );
 

@@ -55,6 +55,9 @@ few hours. This proposal productizes that.
 
 ## Follow-up: import connectors (Slack, Google Drive, then Microsoft 365, Dropbox, Notion)
 
+> Now written up in full: [Import connector contract](import-connectors.md).
+> The rules below are the summary it expands on.
+
 Local files are the starting point, but most teams' context lives in cloud tools.
 The design rule for connectors:
 

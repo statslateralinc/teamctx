@@ -1,5 +1,6 @@
 import { importDocuments } from './import.core.js';
 import { ImportPathError } from '../../src/import.js';
+import { UnknownConnectorError, ConnectorAuthError, listConnectors } from '../../src/connectors/index.js';
 import { UnknownWorkstreamError } from './role.core.js';
 
 const plural = (n, word) => `${n} ${word}${n === 1 ? '' : 's'}`;
@@ -9,6 +10,8 @@ export async function importCommand(paths, opts = {}) {
   try {
     result = await importDocuments({
       paths,
+      from: opts.from,
+      since: opts.since,
       workstreamId: opts.workstream,
       dryRun: !!opts.dryRun,
       // Reported before any distilling starts — on a large import the AI calls
@@ -24,7 +27,16 @@ export async function importCommand(paths, opts = {}) {
       },
     });
   } catch (err) {
-    if (err instanceof ImportPathError || err instanceof UnknownWorkstreamError) {
+    if (err instanceof UnknownConnectorError) {
+      // The message already names them; the table adds what each one is for.
+      console.error(`\nError: ${err.message}\n`);
+      listConnectors().forEach(c => console.error(`  ${c.name.padEnd(10)} ${c.describe}`));
+      console.error('');
+      process.exit(1);
+    }
+    if (err instanceof ImportPathError
+      || err instanceof ConnectorAuthError
+      || err instanceof UnknownWorkstreamError) {
       console.error(`\nError: ${err.message}\n`);
       process.exit(1);
     }
