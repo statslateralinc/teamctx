@@ -118,6 +118,7 @@ See [docs/providers.md](docs/providers.md) for the full provider guide.
 See [docs/workstreams.md](docs/workstreams.md) for the full sub-workstreams guide.
 See [docs/tasks.md](docs/tasks.md) for the full tasks guide.
 See [docs/audit.md](docs/audit.md) for how `ask --audit` and the Contributors section work.
+See [docs/import-dropbox.md](docs/import-dropbox.md) for importing documents from Dropbox.
 
 ---
 

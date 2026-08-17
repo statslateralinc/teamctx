@@ -102,9 +102,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   while listing rather than failing mid-import.
   Credentials come from `DROPBOX_APP_KEY`, `DROPBOX_APP_SECRET` and
   `DROPBOX_REFRESH_TOKEN` (or a short-lived `DROPBOX_ACCESS_TOKEN` on its own),
-  exchanged lazily on the first request. Dropbox's OAuth flow needs no redirect
-  URI — it shows you a code to paste back — so setup is a console app and a
-  paste, with no browser listener. Design notes:
+  exchanged lazily on the first request. `teamctx auth dropbox` obtains them:
+  Dropbox's code flow needs no redirect URI, so it shows you a code to paste
+  back and nothing on your machine listens on a port. Setup and troubleshooting:
+  [docs/import-dropbox.md](docs/import-dropbox.md). Design notes:
   [docs/proposals/import-dropbox.md](docs/proposals/import-dropbox.md).
   Closes #25.
 
