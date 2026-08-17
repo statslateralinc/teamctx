@@ -83,6 +83,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   and a failed login writes nothing. An existing value offered back as a prompt
   default is masked (`sl.u********TAIL`), so re-running the command never echoes
   a live credential into scrollback.
+- **Google Drive connector.** `teamctx import --from gdrive <folder-link|file-link>`
+  — every document beneath a folder becomes one proposed contribution. Google
+  Docs are exported as markdown and Slides as text; uploaded `.md` and `.txt`
+  are downloaded as they are. Drive has no recursive query, so subfolders are
+  walked, and a file that lives in two folders at once is imported once.
+  Everything else in a real Drive — photos, video, installers, PDFs, and
+  spreadsheets, which Drive can only export as CSV — is reported as skipped with
+  a reason. That decision is made from listing metadata, so nothing unimportable
+  is ever downloaded and `--dry-run` costs one request for a whole folder.
+  `--since` filters server-side on `modifiedTime`, and deliberately never
+  filters folders: a folder's own timestamp does not move when a document inside
+  it changes, so filtering them would hide the new work being asked for.
+  There is no "import everything" form. Notion has one because a Notion
+  integration only sees pages you connected by hand; `drive.readonly` sees your
+  entire Drive, so the folder or file has to be named.
+  Credentials come from `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` and
+  `GOOGLE_REFRESH_TOKEN` (or a bare `GOOGLE_ACCESS_TOKEN` for an hour), and the
+  access token is exchanged lazily on the first request rather than in `auth`.
+  Drive is the one source with no token to copy — the help text walks through
+  creating an OAuth client, and warns that a consent screen left in "Testing"
+  expires refresh tokens after seven days, which is what an `invalid_grant` a
+  week later actually means. Design notes:
+  [docs/proposals/import-gdrive.md](docs/proposals/import-gdrive.md). Closes #23.
 
 ### Changed
 - **Contributions record where they came from in the git history.** The commit
