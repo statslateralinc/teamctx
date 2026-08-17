@@ -49,15 +49,12 @@ const MAX_BACKOFF_MS = 32000;
 export const name = 'dropbox';
 export const describe = 'Dropbox — a folder of documents, a file, or a shared link';
 
-const HELP = 'set DROPBOX_APP_KEY, DROPBOX_APP_SECRET and DROPBOX_REFRESH_TOKEN in '
-  + '.env.local. Create an app at dropbox.com/developers/apps (scoped access, full '
-  + 'Dropbox), give it the files.metadata.read, files.content.read and sharing.read '
-  + 'scopes, then visit '
-  + 'https://www.dropbox.com/oauth2/authorize?client_id=<app key>&response_type=code'
-  + '&token_access_type=offline — leaving out redirect_uri means Dropbox shows you a '
-  + 'code to paste back, which you exchange once for a refresh token. '
-  + 'DROPBOX_ACCESS_TOKEN on its own also works: the app console has a "Generate '
-  + 'access token" button, which is short-lived but enough to try this out.';
+const HELP = 'run `teamctx auth dropbox` — it walks through creating the app, then '
+  + 'saves DROPBOX_APP_KEY, DROPBOX_APP_SECRET and DROPBOX_REFRESH_TOKEN to .env.local. '
+  + 'You only do it once; the login does not expire. '
+  + 'If you would rather set them by hand, or just want to try this out, the app '
+  + 'console\'s "Generate access token" button gives a DROPBOX_ACCESS_TOKEN that works '
+  + 'on its own for about four hours.';
 
 /**
  * Synchronous, like every other connector's, so a misconfigured run spends no
@@ -80,6 +77,88 @@ export function auth(env = process.env) {
     refreshToken,
     // A pasted token cannot be renewed, so it is used until Dropbox rejects it.
     expiresAt: accessToken && !refreshToken ? Infinity : 0,
+  };
+}
+
+/**
+ * Walk the user through getting a refresh token, once.
+ *
+ * The `help` above ends with "exchange it once for a refresh token", and until
+ * this existed that meant writing a curl command — an instruction that works
+ * for whoever wrote it and nobody else. This is the whole flow, and it is short
+ * because Dropbox makes it short: no redirect URI, so no listener, no port to
+ * pick, and nothing on this machine is reachable from outside while it runs.
+ *
+ * The app itself has to be the user's own. teamctx ships no client id, which
+ * means no shared quota, no app to get suspended, and no third party in the
+ * path between a team and their own files.
+ */
+export async function authorize({ ask, askSecret = ask, env = process.env, log = () => {} } = {}) {
+  log(`
+Dropbox needs an app of your own — teamctx ships none, so nothing is shared
+between installs and no quota is pooled.
+
+  1. Open https://www.dropbox.com/developers/apps  →  Create app
+  2. Choose "Scoped access", then "Full Dropbox", and name it anything
+  3. Permissions tab: tick files.metadata.read, files.content.read and
+     sharing.read, then Submit
+  4. Settings tab: copy the App key and App secret
+`);
+
+  // The app key is a client id — public by design, and worth showing in full so
+  // it can be checked against the console. The secret is not.
+  const appKey = (await ask('App key', env.DROPBOX_APP_KEY || '')) || '';
+  if (!appKey) throw new Error('dropbox: an app key is required');
+  const appSecret = (await askSecret('App secret', env.DROPBOX_APP_SECRET || '')) || '';
+  if (!appSecret) throw new Error('dropbox: an app secret is required');
+
+  const url = `https://www.dropbox.com/oauth2/authorize?client_id=${encodeURIComponent(appKey)}`
+    + '&response_type=code&token_access_type=offline';
+
+  log(`
+Open this, sign in, and click Allow. Dropbox will show you a code on screen —
+leaving out redirect_uri is deliberate, so nothing on your machine is listening
+and the code goes only where you paste it.
+
+  ${url}
+`);
+
+  const code = (await ask('Authorization code')) || '';
+  if (!code) throw new Error('dropbox: an authorization code is required');
+
+  const res = await globalThis.fetch(TOKEN_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({
+      code,
+      grant_type: 'authorization_code',
+      client_id: appKey,
+      client_secret: appSecret,
+      // No redirect_uri, and that is not an omission: Dropbox requires the
+      // exchange to match the authorize call, which did not set one either.
+    }).toString(),
+  });
+  const json = await res.json().catch(() => ({}));
+
+  if (!res.ok) {
+    // In *this* context invalid_grant means the code, not the refresh token —
+    // codes are single-use and expire in minutes, which is easily the most
+    // common way this step fails.
+    if (String(json?.error || '') === 'invalid_grant') {
+      throw new Error('dropbox: that authorization code was rejected. They are single-use and '
+        + 'expire after a few minutes — open the link again for a fresh one.');
+    }
+    throw new DropboxError(res.status, json);
+  }
+  if (!json.refresh_token) {
+    throw new Error('dropbox: no refresh token came back, so the login would expire in hours. '
+      + 'The authorize URL needs token_access_type=offline.');
+  }
+
+  return {
+    DROPBOX_APP_KEY: appKey,
+    DROPBOX_APP_SECRET: appSecret,
+    DROPBOX_REFRESH_TOKEN: json.refresh_token,
   };
 }
 

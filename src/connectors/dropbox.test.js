@@ -71,10 +71,11 @@ describe('auth', () => {
     const r = dropbox.auth({});
     expect(r.ok).toBe(false);
     expect(r.help).toMatch(/DROPBOX_REFRESH_TOKEN/);
-    // The copy-paste flow is the whole reason this connector is pleasant to
-    // set up, so the help has to say the redirect_uri is left out on purpose.
-    expect(r.help, 'must describe the no-redirect flow').toMatch(/token_access_type=offline/);
-    expect(r.help, 'must name the scopes').toMatch(/files\.content\.read/);
+    // Point at the command rather than reciting the OAuth dance. A help string
+    // that ends "…and keep the refresh token it returns" is telling the user to
+    // write their own curl, which is what `teamctx auth` exists to remove.
+    expect(r.help, 'must name the command that fixes this').toMatch(/teamctx auth dropbox/);
+    expect(r.help, 'must mention the quick way in').toMatch(/DROPBOX_ACCESS_TOKEN/);
   });
 
   it('accepts an app key, secret and refresh token', () => {
@@ -98,6 +99,131 @@ describe('auth', () => {
     const spy = vi.spyOn(globalThis, 'fetch');
     dropbox.auth({ DROPBOX_APP_KEY: 'k', DROPBOX_APP_SECRET: 's', DROPBOX_REFRESH_TOKEN: 'r' });
     expect(spy).not.toHaveBeenCalled();
+  });
+});
+
+describe('authorize', () => {
+  const answers = list => {
+    const queue = [...list];
+    return async () => queue.shift() ?? '';
+  };
+  const exchanged = body => vi.fn(async (url, init) => {
+    calls.push({ url: String(url), method: init?.method, body: init?.body });
+    return { ok: true, status: 200, json: async () => body };
+  });
+
+  it('returns the three variables the connector reads', async () => {
+    globalThis.fetch = exchanged({ refresh_token: 'r-live', access_token: 'sl.x' });
+
+    const values = await dropbox.authorize({ ask: answers(['appkey', 'appsecret', 'code123']) });
+    expect(values).toEqual({
+      DROPBOX_APP_KEY: 'appkey',
+      DROPBOX_APP_SECRET: 'appsecret',
+      DROPBOX_REFRESH_TOKEN: 'r-live',
+    });
+  });
+
+  it('sends no redirect_uri, matching the authorize call', async () => {
+    // Dropbox requires the two to agree. Setting one here after omitting it on
+    // /authorize is rejected, and the error does not say why.
+    globalThis.fetch = exchanged({ refresh_token: 'r' });
+    await dropbox.authorize({ ask: answers(['k', 's', 'c']) });
+
+    expect(calls[0].body).toContain('grant_type=authorization_code');
+    expect(calls[0].body).not.toContain('redirect_uri');
+  });
+
+  it('shows a URL that asks for offline access', async () => {
+    // Without token_access_type=offline the exchange returns no refresh token
+    // and the login silently expires in four hours.
+    const shown = [];
+    globalThis.fetch = exchanged({ refresh_token: 'r' });
+    await dropbox.authorize({ ask: answers(['mykey', 's', 'c']), log: m => shown.push(m) });
+
+    const url = /https:\/\/www\.dropbox\.com\/oauth2\/authorize\S+/.exec(shown.join('\n'))?.[0];
+    expect(url).toContain('token_access_type=offline');
+    expect(url).toContain('client_id=mykey');
+    // No listener on this machine, no port to choose, nothing reachable from
+    // outside while the flow runs.
+    expect(url, 'the URL itself must set no redirect').not.toContain('redirect_uri');
+  });
+
+  it('names the scopes to tick, which is the step people miss', async () => {
+    const shown = [];
+    globalThis.fetch = exchanged({ refresh_token: 'r' });
+    await dropbox.authorize({ ask: answers(['k', 's', 'c']), log: m => shown.push(m) });
+    expect(shown.join('\n')).toMatch(/files\.content\.read/);
+  });
+
+  it('offers what is already set as the default answer', async () => {
+    const asked = [];
+    globalThis.fetch = exchanged({ refresh_token: 'r' });
+    await dropbox.authorize({
+      ask: async (q, d) => { asked.push([q, d]); return d || 'typed'; },
+      env: { DROPBOX_APP_KEY: 'existing-key' },
+    });
+    expect(asked[0]).toEqual(['App key', 'existing-key']);
+  });
+
+  it('asks for the secret through the masking prompt, not the plain one', async () => {
+    // An app key is a client id — public by design, and worth showing in full
+    // so it can be checked against the console. The secret is not, and echoing
+    // a stored one back would put it in scrollback and shell history.
+    const plain = [];
+    const masked = [];
+    globalThis.fetch = exchanged({ refresh_token: 'r' });
+
+    await dropbox.authorize({
+      ask: async (q, d) => { plain.push(q); return d || 'typed'; },
+      askSecret: async (q, d) => { masked.push(q); return d || 'typed'; },
+      env: { DROPBOX_APP_KEY: 'k', DROPBOX_APP_SECRET: 'the-real-secret' },
+    });
+
+    expect(masked).toContain('App secret');
+    expect(plain, 'the secret must not go through the echoing prompt').not.toContain('App secret');
+  });
+
+  it('keeps the real secret when the user accepts the masked default', async () => {
+    // The mask is display only; pressing enter has to round-trip the true
+    // value or the login silently breaks.
+    globalThis.fetch = exchanged({ refresh_token: 'r' });
+    const values = await dropbox.authorize({
+      ask: async (q, d) => d || 'typed',
+      askSecret: async (q, d) => d,
+      env: { DROPBOX_APP_KEY: 'k', DROPBOX_APP_SECRET: 'the-real-secret' },
+    });
+    expect(values.DROPBOX_APP_SECRET).toBe('the-real-secret');
+  });
+
+  it('explains a stale authorization code rather than passing the raw error through', async () => {
+    // Codes are single-use and expire in minutes — easily the most common way
+    // this step fails, and "invalid_grant" explains nothing.
+    globalThis.fetch = vi.fn(async () => ({
+      ok: false, status: 400, json: async () => ({ error: 'invalid_grant' }),
+    }));
+
+    await expect(dropbox.authorize({ ask: answers(['k', 's', 'stale']) }))
+      .rejects.toThrow(/single-use and expire/);
+  });
+
+  it('refuses a response with no refresh token instead of saving a 4-hour login', async () => {
+    globalThis.fetch = exchanged({ access_token: 'sl.short' });
+    await expect(dropbox.authorize({ ask: answers(['k', 's', 'c']) }))
+      .rejects.toThrow(/token_access_type=offline/);
+  });
+
+  it('stops early rather than exchanging an empty answer', async () => {
+    globalThis.fetch = vi.fn();
+    await expect(dropbox.authorize({ ask: answers(['', '', '']) }))
+      .rejects.toThrow(/app key is required/);
+    expect(globalThis.fetch).not.toHaveBeenCalled();
+  });
+
+  it('requires the code as well', async () => {
+    globalThis.fetch = vi.fn();
+    await expect(dropbox.authorize({ ask: answers(['k', 's', '']) }))
+      .rejects.toThrow(/authorization code is required/);
+    expect(globalThis.fetch).not.toHaveBeenCalled();
   });
 });
 
