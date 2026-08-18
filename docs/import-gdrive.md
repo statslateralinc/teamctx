@@ -19,7 +19,7 @@ OAuth flow against a client you create yourself. teamctx ships no Google client,
 so nothing is shared between installs — your quota is yours, and no third party
 sits between your team and your files.
 
-### 1. Create a Google Cloud project
+### 1. Create a project and enable the Drive API
 
 1. [console.cloud.google.com/projectcreate](https://console.cloud.google.com/projectcreate)
    — name it anything
@@ -27,32 +27,54 @@ sits between your team and your files.
    [console.cloud.google.com/apis/library/drive.googleapis.com](https://console.cloud.google.com/apis/library/drive.googleapis.com)
    → **Enable**
 
-### 2. Configure the consent screen
+Do this before the next step. The Google Auth Platform section does not appear
+until at least one API is enabled on the project.
 
-**APIs & Services → OAuth consent screen.**
+### 2. Configure Google Auth Platform
 
-> ⚠️ **If you are on Google Workspace, choose user type "Internal".**
+Google reorganised this area — what older guides call the "OAuth consent
+screen" is now **Google Auth Platform**, split into Branding, Audience, Data
+Access and Clients.
+
+Go to [console.cloud.google.com/auth/branding](https://console.cloud.google.com/auth/branding)
+and click **Get Started** if it says the platform is not configured yet.
+
+| Step | What to enter |
+| --- | --- |
+| **App Information** | App name (anything) and your own email as support contact |
+| **Audience** | See the warning below |
+| **Contact Information** | Your email |
+| **Finish** | Accept the policy, click **Create** |
+
+> ⚠️ **Audience: choose "Internal" if you are on Google Workspace.**
 >
-> Choosing **External** leaves the app in "Testing" status, and Google then
-> expires your refresh token after **seven days** — so the connector works all
-> week and fails the following Monday with `invalid_grant`. Publishing an
-> External app to escape that requires verification *and* a security assessment,
-> because `drive.readonly` is a restricted scope.
+> **External** leaves the app in "Testing", and Google then expires your refresh
+> token after **seven days** — the connector works all week and fails the
+> following Monday with `invalid_grant`. Publishing an External app to escape
+> that needs verification *and* a security assessment, because `drive.readonly`
+> is a restricted scope.
 >
-> On a personal Gmail account, Internal is not offered. You can still use the
-> connector; you will just have to re-run `teamctx auth gdrive` weekly.
+> On a personal Gmail account Internal is not offered. The connector still
+> works; you just re-run `teamctx auth gdrive` weekly.
 
-Add `https://www.googleapis.com/auth/drive.readonly` when asked for scopes, and
-add yourself as a test user if it asks.
+**If you chose External**, add yourself as a test user:
+[console.cloud.google.com/auth/audience](https://console.cloud.google.com/auth/audience)
+→ **Test users** → **Add users** → your own Gmail address. Skip this and Google
+refuses the login later.
 
-### 3. Create an OAuth client
+### 3. Add the scope, then create a client
 
-**Credentials → Create credentials → OAuth client ID → Application type:
-"Desktop app".** Copy the **Client ID** and **Client secret**.
+**Data Access** ([console.cloud.google.com/auth/scopes](https://console.cloud.google.com/auth/scopes))
+→ **Add or remove scopes** → filter for `drive.readonly`, tick
+`https://www.googleapis.com/auth/drive.readonly` → **Update** → **Save**.
 
-Desktop app is the right type because the login uses a loopback redirect. You do
-not need to configure a redirect URI yourself — teamctx picks a free port and
-tells Google about it.
+**Clients** ([console.cloud.google.com/auth/clients](https://console.cloud.google.com/auth/clients))
+→ **Create client** → Application type **Desktop app** → **Create**.
+
+Copy the **Client ID** and **Client secret** from the dialog.
+
+You do not configure a redirect URI. A desktop client accepts loopback
+redirects, and teamctx picks a free port each time it runs.
 
 ### 4. Log in
 
@@ -60,8 +82,9 @@ tells Google about it.
 teamctx auth gdrive
 ```
 
-It prints the steps above, asks for the client ID and secret, then opens
-Google's consent screen. Approve it in the browser and the command finishes on
+It asks for the client ID and secret, then opens Google's consent screen. You
+will see an **unverified app** warning — expected for a client you created
+yourself — so click **Advanced** → **Go to (unsafe)**. Approve it in the browser and the command finishes on
 its own.
 
 While it waits, teamctx runs a short-lived HTTP server on `127.0.0.1` — bound to
