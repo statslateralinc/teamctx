@@ -48,6 +48,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Within one run, each document is told what earlier ones already proposed, so
   three files describing the same decision produce one contribution rather than
   three near-duplicates for the manager to reject. Closes #20.
+- **`teamctx stats`** — honest team numbers computed entirely from the repo's
+  own history. No AI call, no network, no telemetry: contribution cadence by
+  author and per week, approval flow with median review wait, days since the
+  last contribution per workstream, and task flow. `--since` sets the window
+  (default 28 days), `--workstream` narrows every metric rather than only the
+  freshness rows, and `--json` prints the raw numbers. Also exposed read-only
+  over MCP as `get_stats`, so a manager can ask their AI how the team's context
+  habit looks and get grounded numbers instead of a guess.
+  One person is counted once even when their display name differs between the
+  CLI (git name) and the hosted server (GitHub name) — that is what `authorKey`
+  was for.
+  Approval latency comes from git rather than the audit log, because approving
+  a contribution deletes its queue item and records nothing: there is no
+  `approvedAt` anywhere, and `contributions.jsonl` never leaves `logged`. The
+  commit that removed the queue file *is* the decision, so one
+  `git log --diff-filter=AD` over `.teamctx/queue` yields queued-at and
+  decided-at per item with no commit-message parsing. Where that history is
+  unreachable — hosted mode has no working copy — those numbers come back
+  `null` rather than `0`, since a zero would read as "nothing was ever
+  approved". Design notes:
+  [docs/proposals/local-metrics.md](docs/proposals/local-metrics.md).
+  Closes #28.
 
 ### Changed
 - `workstream_use` / `teamctx workstream use` now records a personal
