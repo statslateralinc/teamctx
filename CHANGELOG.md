@@ -67,6 +67,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   one PR each on top of this. Design notes:
   [docs/proposals/import-connectors.md](docs/proposals/import-connectors.md).
   Closes #21.
+- **Microsoft 365 connector.** `teamctx import --from m365 <sharepoint-url|onedrive-path>`
+  — every document beneath a folder becomes one proposed contribution.
+  Markdown and text are downloaded; Word documents are unpacked locally,
+  because Microsoft Graph offers no conversion to text for any file type.
+  Spreadsheets, decks, PDFs and binaries are skipped with a reason, decided
+  from listing metadata so nothing unimportable is downloaded.
+  `teamctx auth m365` asks whether the account is work or personal and requests
+  the matching scopes. This matters: a personal Microsoft account cannot hold
+  `Sites.Read.All`, and asking for it fails the whole consent rather than
+  granting the rest — so a single hardcoded scope set would lock every consumer
+  account out. The tenant that issued the token is saved so refreshes go back to
+  the same endpoint, and the rotated refresh token Microsoft returns is kept.
+  SharePoint URLs are decomposed into `/sites/{host}:/{path}` rather than sent
+  through `/shares`, whose documented least-privileged permission is a *write*
+  scope; `/shares` is used only for short links that carry no parseable
+  structure. `--since` filters in memory, since `children` supports no
+  `$filter`. Setup: [docs/import-m365.md](docs/import-m365.md). Design notes:
+  [docs/proposals/import-m365.md](docs/proposals/import-m365.md). Closes #24.
+- **Word documents can be read.** `src/formats/docx.js` extracts the text from a
+  `.docx` with no new dependency — Node ships `zlib`, and the ZIP central
+  directory is walked directly. Text deleted with track changes still on is
+  dropped rather than stripped along with its tags: it remains in the file, and
+  resurrecting a sentence someone removed on purpose would be worse than
+  importing nothing. Field codes go too; inserted text is kept. Used by the
+  Microsoft 365 connector, and available to the others.
 - **`teamctx auth <connector>`** — log in to an import connector once and keep
   working. It runs the connector's login flow and saves the resulting long-lived
   credentials to `.env.local`.
