@@ -154,7 +154,10 @@ export function collectStats({
       rejected: rejectedInWindow.length,
       pending: queue.length,
       approvalRate: decided ? Math.round((approved / decided) * 100) : null,
-      medianHours: latencies.length ? Math.round(median(latencies) * 10) / 10 : null,
+      // Two decimals, not one: a review turned around in ten minutes rounds to
+      // 0.0 at one, and a consumer told to report the number verbatim would
+      // say it was decided instantly.
+      medianHours: latencies.length ? Math.round(median(latencies) * 100) / 100 : null,
       // Lets the presenter say "needs git history" rather than print a zero
       // that looks like "nothing was ever approved".
       historyAvailable: haveHistory,

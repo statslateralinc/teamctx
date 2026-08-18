@@ -123,7 +123,7 @@ describe('TOOLS list', () => {
     for (const n of ['get_context', 'list_workstreams', 'get_workstream', 'get_role_context',
                      'list_roles', 'list_snapshots', 'get_snapshot', 'get_current_snapshot',
                      'list_pending_reviews', 'get_status', 'get_config', 'ask',
-                     'suggest_roles', 'suggest_workstream_splits']) {
+                     'suggest_roles', 'suggest_workstream_splits', 'get_stats']) {
       expect(names).toContain(n);
     }
   });
@@ -159,6 +159,19 @@ describe('TOOLS list', () => {
       expect(t.description).toBeTruthy();
       expect(t.inputSchema.type).toBe('object');
     }
+  });
+
+  it('every advertised tool has a handler behind it', () => {
+    // Advertising a tool with nothing implementing it fails at call time, in
+    // someone else's client, with an error the user cannot act on.
+    const handlers = makeHandlers(process.cwd());
+    for (const t of TOOLS) {
+      expect(typeof handlers[t.name], `tool ${t.name} has no handler`).toBe('function');
+    }
+  });
+
+  it('get_stats is read-only, so it carries no risk warning', () => {
+    expect(TOOLS.find(t => t.name === 'get_stats').description).not.toMatch(/RISKY/);
   });
 });
 

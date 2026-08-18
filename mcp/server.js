@@ -13,6 +13,7 @@ import {
 } from '../src/storage.js';
 import { answerQuestion } from '../src/context.js';
 import { migrateIfNeeded } from '../src/migrate.js';
+import { computeStats } from '../src/metrics.js';
 import { initProject } from '../cli/commands/init.core.js';
 import {
   listPendingReviews, approveReview, rejectReview,
@@ -141,6 +142,18 @@ export const TOOLS = [
     name: 'suggest_workstream_splits',
     description: 'AI-propose sub-workstream splits for the active workstream (dry-run). Returns { splits: [{name, rationale, whyIds, whys}], leftover }. Use workstream_split to accept.',
     inputSchema: { type: 'object', properties: {}, additionalProperties: false },
+  },
+  {
+    name: 'get_stats',
+    description: "Team metrics computed from the project's own history — contribution cadence by author, approval flow and median review wait, context freshness per workstream, task flow. Read-only, no AI call, nothing leaves the machine. Numbers are grounded: report them as returned rather than estimating. `approvals.historyAvailable` is false when git history is unreachable (hosted mode), in which case `decided`/`approved`/`medianHours` are null and must not be reported as zero.",
+    inputSchema: {
+      type: 'object',
+      properties: {
+        since: { type: 'string', description: 'Start of the window as a date (default: last 28 days)' },
+        workstream: { type: 'string', description: 'Narrow every metric to one workstream' },
+      },
+      additionalProperties: false,
+    },
   },
 
   // Tier 1 — additive writes
@@ -446,6 +459,19 @@ export function makeHandlers(projectRoot) {
         contributions: { total: contributions.length, decisions: decisions.length },
         roles: (config.roles || []).map(r => ({ slug: r.slug, name: r.name, workstream: r.workstream || 'main' })),
       });
+    },
+
+    async get_stats(args = {}) {
+      // Hosted mode reaches the repo over the Git Data API, not a working copy,
+      // so `queueTimeline` finds no git binary and the approval numbers come
+      // back null. The tool description tells the client to say so rather than
+      // report a zero.
+      return textResult(await computeStats({
+        cwd: gitCwd,
+        teamctxDir: dir(),
+        since: args.since,
+        workstream: args.workstream,
+      }));
     },
 
     async get_config() {
