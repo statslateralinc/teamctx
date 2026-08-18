@@ -239,6 +239,30 @@ export function writeRejected(item, dir) {
   writeFileSync(join(d, `${item.id}.json`), JSON.stringify(item, null, 2));
 }
 
+/**
+ * Rejections are the only decision that leaves a file behind — approving
+ * deletes the queue item and records nothing — so this is the only way to tell
+ * an approval from a rejection without reading git history.
+ */
+export function listRejected(dir) {
+  const s = sessionListDir(ctxPath('rejected'));
+  if (s !== null) {
+    return s.filter(name => name.endsWith('.json'))
+      .map(name => {
+        const content = getCurrentSession().read(ctxPath('rejected', name));
+        return content ? JSON.parse(content.content) : null;
+      })
+      .filter(Boolean)
+      .sort((a, b) => (a.rejectedAt || '').localeCompare(b.rejectedAt || ''));
+  }
+  const d = resolve(dir, 'rejected');
+  if (!existsSync(d)) return [];
+  return readdirSync(d)
+    .filter(name => name.endsWith('.json'))
+    .map(name => JSON.parse(readFileSync(join(d, name), 'utf-8')))
+    .sort((a, b) => (a.rejectedAt || '').localeCompare(b.rejectedAt || ''));
+}
+
 // ---- Snapshots ----
 
 export function snapshotsDir(dir) {
