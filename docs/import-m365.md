@@ -23,8 +23,10 @@ Word documents are supported. Microsoft Graph offers no conversion to text for
    directory and personal Microsoft accounts"**. Anything narrower will lock out
    half the people who might use it.
 3. **Redirect URI:** platform **"Mobile and desktop applications"**, value
-   `http://localhost`. The port is chosen fresh on each login and does not need
-   to match.
+   exactly `http://localhost` — no port, and **not** `http://127.0.0.1`.
+   Entra ignores the port only for `localhost`, so a fresh port each login
+   still matches. For any other host the port must match exactly, and the
+   portal will not register the loopback IP without a manifest edit.
 4. Copy the **Application (client) ID** from the Overview page.
 
 You do not need a client secret. A desktop app is a *public client*, and leaving
@@ -152,6 +154,18 @@ OneDrive paths or a sharing link instead.
 
 **`a path may not contain ":"`**
 Graph uses `:` structurally in paths. Import the parent folder instead.
+
+**`The provided value for the input parameter 'redirect_uri' is not valid`**
+The app registration has no `http://localhost` redirect URI, or it was added
+under the wrong platform. In Entra: app → **Authentication** → **Add a
+platform** → **Mobile and desktop applications** → tick or enter
+`http://localhost`.
+
+**`You can't sign in here with a personal account`**
+The registration does not accept personal Microsoft accounts. In Entra: app →
+**Authentication** → **Supported account types** → *"Accounts in any
+organizational directory and personal Microsoft accounts"*. This can be changed
+after registration.
 
 **The login hangs and times out**
 The browser never reached the listener. Check that the app registration has a

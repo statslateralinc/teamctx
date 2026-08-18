@@ -387,6 +387,14 @@ describe('errors', () => {
       .rejects.toThrow(/personal Microsoft accounts/);
   });
 
+  it('names the app-registration audience mistake', async () => {
+    // "unauthorized_client" is what Entra returns when the registration does
+    // not accept the kind of account signing in, and it explains nothing.
+    globalThis.fetch = route([['me/drive/root', fail(400, 'unauthorized_client')]]);
+    await expect(m365.list(authed(), '/Specs', nowait))
+      .rejects.toThrow(/Supported account types/);
+  });
+
   it('honours Retry-After rather than backing off blindly', async () => {
     const waited = [];
     let n = 0;
@@ -464,14 +472,27 @@ describe('authorize', () => {
   const answers = list => { const q = [...list]; return async () => q.shift() ?? ''; };
   const captureUrl = () => {
     const seen = {};
-    return [seen, async ({ buildUrl }) => {
-      seen.url = buildUrl('http://127.0.0.1:54321', 'st4te');
-      return { code: 'the-code', redirectUri: 'http://127.0.0.1:54321' };
+    return [seen, async ({ buildUrl, host }) => {
+      seen.host = host;
+      seen.url = buildUrl(`http://${host}:54321`, 'st4te');
+      return { code: 'the-code', redirectUri: `http://${host}:54321` };
     }];
   };
   const exchanged = body => vi.fn(async (url, init) => {
     calls.push({ url: String(url), method: init?.method, body: init?.body });
     return { ok: true, status: 200, json: async () => body };
+  });
+
+  it('asks the listener for localhost, not the loopback IP', async () => {
+    // Entra ignores the port when matching a redirect URI only for localhost.
+    // For 127.0.0.1 the port must match exactly, which an ephemeral port never
+    // does — and the portal will not even register http://127.0.0.1 without a
+    // manifest edit. Google accepts either, so this only breaks here.
+    const [seen, lb] = captureUrl();
+    globalThis.fetch = exchanged({ refresh_token: 'r' });
+    await m365.authorize({ ask: answers(['work', 'cid', '']), loopback: lb });
+    expect(seen.host).toBe('localhost');
+    expect(decodeURIComponent(seen.url)).toContain('redirect_uri=http://localhost:54321');
   });
 
   it('records the tenant alongside the token', async () => {

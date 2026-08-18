@@ -133,6 +133,13 @@ Using ${account.label}
 
   const { code, redirectUri } = await loopback({
     log,
+    // `localhost`, not `127.0.0.1`. Entra ignores the port when matching a
+    // redirect URI *only* for localhost — for any other host, including the
+    // loopback IP, the port must match exactly, which an ephemeral port never
+    // will. The portal also refuses to register http://127.0.0.1 at all
+    // without a manifest edit. Google accepts either, so this only surfaced
+    // here.
+    host: 'localhost',
     buildUrl: (uri, state) => `${AUTH_HOST}/${account.tenant}/oauth2/v2.0/authorize?`
       + new URLSearchParams({
         client_id: clientId,
@@ -194,6 +201,9 @@ export class GraphError extends Error {
       invalid_client: 'M365_CLIENT_ID or M365_CLIENT_SECRET is wrong',
       // The characteristic personal-account failure: the app asked for a scope
       // a consumer account cannot hold, so consent never completed.
+      unauthorized_client: 'this app registration does not accept that kind of account. '
+        + 'In Entra, open the app -> Authentication -> Supported account types and choose '
+        + '"Accounts in any organizational directory and personal Microsoft accounts"',
       invalid_scope: 'this account cannot grant one of the requested permissions. '
         + 'Sites.Read.All is not available to personal Microsoft accounts — '
         + 'run `teamctx auth m365` and choose the personal option',
