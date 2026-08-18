@@ -1,4 +1,5 @@
 import * as folder from './folder.js';
+import * as m365 from './m365.js';
 
 /**
  * Import connectors.
@@ -42,7 +43,7 @@ import * as folder from './folder.js';
  * secret live once in cli/commands/auth.core.js.
  */
 
-const CONNECTORS = { folder };
+const CONNECTORS = { folder, m365 };
 
 export class UnknownConnectorError extends Error {
   constructor(name) {
