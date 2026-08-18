@@ -127,10 +127,30 @@ question to one selector form a user can avoid.
 `/shares`, the fallback is uncontroversial and the parsing is an optimisation
 rather than a workaround.
 
-### 2. Scopes
+### 2. Two account types, decided at login
 
-`Files.Read.All` and `Sites.Read.All` — both delegated, both read-only — plus
-`offline_access` for the refresh token.
+Microsoft has two populations and they are not interchangeable. A **work or
+school** account reaches SharePoint; a **personal** Microsoft account does not —
+`GET /sites/…` is documented as *"Not supported"* for it. They also sign in
+through different tenant endpoints, and requesting a scope the account cannot
+hold fails the whole consent rather than degrading.
+
+| | Work / school | Personal |
+| --- | --- | --- |
+| Tenant endpoint | `/organizations` | `/consumers` |
+| Scopes | `Files.Read.All Sites.Read.All offline_access` | `Files.Read.All offline_access` |
+| OneDrive | ✅ | ✅ |
+| SharePoint libraries | ✅ | ✅ *(shared links only, via `/shares`)* |
+| SharePoint sites by URL | ✅ | ❌ |
+
+So `authorize` asks which one, and picks the endpoint and scope set from the
+answer. That is not a workaround — it is the only correct behaviour for a
+connector serving both, and getting it wrong means a personal account can never
+log in at all.
+
+The app registration must be created as **"Accounts in any organizational
+directory and personal Microsoft accounts"** for both to work against one
+client id.
 
 ### 3. Login reuses what Drive built
 
@@ -188,14 +208,48 @@ SharePoint URLs and OneDrive paths.
 - **Teams messages.** Slack's problem with different nouns; #22 owns it.
 - **`.pptx`, `.xlsx`, `.doc`, PDFs, binaries.**
 
+## What a personal account can verify, and what it cannot
+
+Worth stating plainly, because the connector is built for both audiences but
+will initially be tested by one. The SharePoint-site path is not scoped out —
+it is written, unit-tested, and shipped **unverified against a live tenant**,
+and the PR should say so rather than imply otherwise.
+
+**Exercised end to end with a personal Microsoft account:**
+
+- the whole login flow — app registration, loopback redirect, token exchange,
+  refresh, and the `/consumers` endpoint with its reduced scope set
+- `/me/drive` listing, the BFS folder walk, and the `seen` set
+- classification, skip reasons, size pre-checks, `--since`
+- `.docx` extraction — entirely local, so a real Word file tests it fully
+- `/shares` resolution, using a `1drv.ms` link the account shares with itself —
+  which also answers whether `Files.Read.All` suffices there
+
+**Not reachable without a work or school tenant:**
+
+- `GET /sites/{hostname}:/{path}` and the SharePoint drive-path walk
+- the `Sites.Read.All` scope and the `/organizations` endpoint
+- throttling behaviour at tenant scale
+
+That is roughly one selector form out of three. Everything downstream of
+"we have a driveItem" is shared between them, so a bug in the SharePoint path
+would be in URL parsing and site resolution — the part most amenable to unit
+tests against captured responses.
+
+Mitigation: capture the two SharePoint responses from Microsoft's own
+documentation as fixtures, keep the parsing pure and separately tested, and put
+an explicit "unverified against a live tenant" note in the PR body so a reviewer
+with one knows exactly where to look.
+
 ## Suggested order
 
 1. **`src/formats/docx.js`** — standalone PR, useful the day it lands
 2. **Wire it into `folder` and Dropbox** — two connectors gain Word support
-3. **This connector** — and only with a real M365 tenant to test against
+3. **This connector**
 
-Step 3 is the one that cannot be faked. Dropbox's Paper bug and Drive's design
-both changed on contact with a real account.
+Dropbox's Paper bug and Drive's design both changed on contact with a real
+account, so expect the same here for the OneDrive half — and expect the
+SharePoint half to need a second pair of hands.
 
 ## Where to start
 
@@ -210,8 +264,11 @@ both changed on contact with a real account.
 ## Open questions
 
 - **Does `Files.Read.All` work against `/shares`?** Decides whether the fallback
-  is fine or whether `1drv.ms` links have to be refused outright.
-- **Can the Entra app be a public client?** If so, the setup loses a secret.
+  is fine or whether `1drv.ms` links have to be refused outright. Answerable
+  with a personal account, which is convenient — share a file with yourself and
+  try to resolve the link.
+- **Can the Entra app be a public client?** If so, the setup loses a secret —
+  and a public client is also what makes the device code flow available later.
 - **What survives a `.docx` round trip that should not?** Tracked changes,
   comments, and deleted-but-unaccepted text all live in `word/document.xml`.
   Naïve tag-stripping can resurrect a sentence someone deleted, and putting that
