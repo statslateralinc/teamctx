@@ -15,6 +15,8 @@ import { pullCommand } from './commands/pull.js';
 import { reflectCommand } from './commands/reflect.js';
 import { contextCommand } from './commands/context.js';
 import { statusCommand } from './commands/status.js';
+import { statsCommand } from './commands/stats.js';
+import { DEFAULT_WINDOW_DAYS } from '../src/metrics.js';
 import { configModelCommand, configGithubRawBaseCommand, configManagerCommand, configManagerEmailCommand, configDeployUrlCommand, configProviderCommand, configNameCommand } from './commands/config.js';
 import { reviewListCommand, reviewApproveCommand, reviewRejectCommand } from './commands/review.js';
 import {
@@ -82,6 +84,11 @@ program.command('reflect').description('AI rewrites shared context for clarity')
   .action(reflectCommand);
 program.command('context <role>').description('Print role context MD to stdout').action(contextCommand);
 program.command('status').description('Show project summary').action(statusCommand);
+program.command('stats').description('Team metrics from your own history — no AI call, nothing leaves the machine')
+  .option('--since <date>', `Start of the window (default: last ${DEFAULT_WINDOW_DAYS} days)`)
+  .option('--workstream <id>', 'Narrow every metric to one workstream')
+  .option('--json', 'Print the raw numbers instead of a table')
+  .action(statsCommand);
 program.command('mcp').description('Start MCP server over stdio (for Claude Code, Claude Desktop, Cursor, etc.)')
   .option('-p, --project <path>', 'Absolute path to the teamctx project (defaults to $TEAMCTX_PROJECT_DIR or cwd)')
   .action(mcpCommand);
