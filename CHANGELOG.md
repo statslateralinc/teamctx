@@ -70,6 +70,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   approved". Design notes:
   [docs/proposals/local-metrics.md](docs/proposals/local-metrics.md).
   Closes #28.
+  `--waits` lists every review wait, slowest first, marking which ended in a
+  rejection; the default view shows the fastest-to-slowest range beside the
+  median. A median alone cannot tell "everything reviewed within a day" apart
+  from "everything reviewed in an hour except one that sat for a fortnight",
+  and the second is the one worth acting on. `get_stats` returns the same list.
 
 ### Changed
 - `workstream_use` / `teamctx workstream use` now records a personal

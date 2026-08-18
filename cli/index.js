@@ -87,6 +87,7 @@ program.command('status').description('Show project summary').action(statusComma
 program.command('stats').description('Team metrics from your own history — no AI call, nothing leaves the machine')
   .option('--since <date>', `Start of the window (default: last ${DEFAULT_WINDOW_DAYS} days)`)
   .option('--workstream <id>', 'Narrow every metric to one workstream')
+  .option('--waits', 'List every review wait, slowest first')
   .option('--json', 'Print the raw numbers instead of a table')
   .action(statsCommand);
 program.command('mcp').description('Start MCP server over stdio (for Claude Code, Claude Desktop, Cursor, etc.)')

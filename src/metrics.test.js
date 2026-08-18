@@ -114,6 +114,53 @@ describe('approvals', () => {
     expect(r.approvals).toMatchObject({ decided: 2, approved: 1, rejected: 1, approvalRate: 50 });
   });
 
+  it('keeps every wait, not just the median', () => {
+    // A median alone cannot tell "all reviewed within a day" apart from "all
+    // reviewed in an hour except one that sat for a fortnight", and the second
+    // is the one worth acting on.
+    const r = stats({ timeline });
+    expect(r.approvals.waits.map(w => w.hours)).toEqual([48, 24]);
+    expect(r.approvals.slowestHours).toBe(48);
+    expect(r.approvals.fastestHours).toBe(24);
+  });
+
+  it('orders waits slowest first, since that is what is being looked for', () => {
+    const r = stats({ timeline });
+    expect(r.approvals.waits[0].id).toBe('c-1');
+  });
+
+  it('marks which of them were rejected', () => {
+    // A long wait ending in a rejection is a different story from a long wait
+    // ending in an approval.
+    const r = stats({
+      timeline,
+      rejected: [{ id: 'c-2', rejectedAt: '2026-08-11T00:00:00.000Z' }],
+    });
+    expect(r.approvals.waits.find(w => w.id === 'c-2').rejected).toBe(true);
+    expect(r.approvals.waits.find(w => w.id === 'c-1').rejected).toBe(false);
+  });
+
+  it('excludes a still-pending item, which has no wait to measure', () => {
+    const r = stats({ timeline });
+    expect(r.approvals.waits.map(w => w.id)).not.toContain('c-3');
+  });
+
+  it('caps the list rather than returning a log file', () => {
+    const many = new Map(Array.from({ length: 40 }, (_, i) => [`c-${i}`, {
+      id: `c-${i}`,
+      queuedAt: '2026-08-10T00:00:00.000Z',
+      decidedAt: `2026-08-${11 + (i % 10)}T00:00:00.000Z`,
+    }]));
+    expect(stats({ timeline: many }).approvals.waits).toHaveLength(20);
+  });
+
+  it('has no waits and no ends when nothing was decided', () => {
+    const r = stats({ timeline: new Map([['x', { queuedAt: null, decidedAt: null }]]) });
+    expect(r.approvals.waits).toEqual([]);
+    expect(r.approvals.slowestHours).toBe(null);
+    expect(r.approvals.fastestHours).toBe(null);
+  });
+
   it('reports nothing rather than guessing when git history is unavailable', () => {
     // Hosted mode has no git binary. A zero here would read as "nobody has
     // ever approved anything", which is the opposite of the truth.

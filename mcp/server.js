@@ -145,7 +145,7 @@ export const TOOLS = [
   },
   {
     name: 'get_stats',
-    description: "Team metrics computed from the project's own history — contribution cadence by author, approval flow and median review wait, context freshness per workstream, task flow. Read-only, no AI call, nothing leaves the machine. Numbers are grounded: report them as returned rather than estimating. `approvals.historyAvailable` is false when git history is unreachable (hosted mode), in which case `decided`/`approved`/`medianHours` are null and must not be reported as zero.",
+    description: "Team metrics computed from the project's own history — contribution cadence by author, approval flow and median review wait, context freshness per workstream, task flow. Read-only, no AI call, nothing leaves the machine. Numbers are grounded: report them as returned rather than estimating. `approvals.historyAvailable` is false when git history is unreachable (hosted mode), in which case `decided`/`approved`/`medianHours` are null and must not be reported as zero. `approvals.waits` lists each decided item slowest first with its wait in hours and whether it was rejected — use it to name what actually stalled rather than summarising the median, which hides an outlier by design.",
     inputSchema: {
       type: 'object',
       properties: {

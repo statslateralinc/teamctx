@@ -37,7 +37,10 @@ function renderCadence({ total, decisions, perWeek, byAuthor }) {
   console.log();
 }
 
-function renderApprovals({ decided, approved, rejected, pending, approvalRate, medianHours, historyAvailable }) {
+function renderApprovals({
+  decided, approved, rejected, pending, approvalRate, medianHours,
+  slowestHours, fastestHours, waits, historyAvailable,
+}, { detail = false } = {}) {
   console.log('  Approval flow');
   if (!historyAvailable) {
     // Saying "0 approved" here would be a lie of omission — approving leaves
@@ -47,7 +50,22 @@ function renderApprovals({ decided, approved, rejected, pending, approvalRate, m
     const split = decided ? ` (${approved} approved, ${rejected} rejected)` : '';
     const rate = approvalRate === null ? '' : `   ${approvalRate}% approved`;
     console.log(`    ${pad('Decided', 20)}${decided}${split}${rate}`);
-    console.log(`    ${pad('Median wait', 20)}${duration(medianHours)}`);
+    // The median on its own cannot tell "all reviewed within a day" apart from
+    // "all reviewed in an hour, except one that sat for a fortnight", and the
+    // second is the one worth acting on.
+    const spread = waits && waits.length > 1
+      ? `   (${duration(fastestHours)}–${duration(slowestHours)})` : '';
+    console.log(`    ${pad('Median wait', 20)}${duration(medianHours)}${spread}`);
+
+    if (detail && waits?.length) {
+      console.log('    Slowest first');
+      for (const w of waits) {
+        // Marked, because a long wait ending in a rejection is a different
+        // story from a long wait ending in an approval.
+        const line = `      ${pad(w.id, 32)}${pad(duration(w.hours), 8)}${w.rejected ? 'rejected' : ''}`;
+        console.log(line.replace(/\s+$/, ''));
+      }
+    }
   }
   console.log(`    ${pad('Pending now', 20)}${pending}`);
   console.log();
@@ -87,7 +105,7 @@ export async function statsCommand(opts = {}) {
   console.log(`\n${stats.project || 'teamctx'} — stats (${window}${scope})\n`);
 
   renderCadence(stats.cadence);
-  renderApprovals(stats.approvals);
+  renderApprovals(stats.approvals, { detail: !!opts.waits });
   renderFreshness(stats.freshness);
   renderTasks(stats.tasks);
 }

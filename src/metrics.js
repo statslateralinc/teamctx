@@ -34,6 +34,9 @@ const execFileAsync = promisify(execFile);
 /** The proposal's default: a trailing four weeks reads as "current cadence". */
 export const DEFAULT_WINDOW_DAYS = 28;
 
+/** Enough to find what stalled without turning the JSON into a log file. */
+const MAX_WAITS = 20;
+
 const DAY_MS = 86400000;
 const iso = d => new Date(d).toISOString();
 const time = v => (v ? new Date(v).getTime() : NaN);
@@ -115,9 +118,23 @@ export function collectStats({
   // ---- approvals
   const rejectedInWindow = rejected.filter(r => within(r.rejectedAt));
   const decisions = [...timeline.values()].filter(e => within(e.decidedAt));
-  const latencies = decisions
+  // Kept per decision rather than reduced straight to a median. A median alone
+  // cannot distinguish "everything reviewed in a day" from "everything reviewed
+  // in an hour except one that sat for a fortnight", and the second is the one
+  // a manager needs to see. Rejections are marked because a long wait ending in
+  // a rejection is a different story from a long wait ending in an approval.
+  const rejectedIds = new Set(rejectedInWindow.map(r => r.id));
+  const waits = decisions
     .filter(e => e.queuedAt)
-    .map(e => (time(e.decidedAt) - time(e.queuedAt)) / 3600000);
+    .map(e => ({
+      id: e.id,
+      hours: Math.round(((time(e.decidedAt) - time(e.queuedAt)) / 3600000) * 100) / 100,
+      queuedAt: e.queuedAt,
+      decidedAt: e.decidedAt,
+      rejected: rejectedIds.has(e.id),
+    }))
+    .sort((a, b) => b.hours - a.hours);
+  const latencies = waits.map(w => w.hours);
   // Without git history there is no way to see an approval at all, so the
   // counts stay null instead of quietly reporting rejections as the whole
   // picture.
@@ -158,6 +175,13 @@ export function collectStats({
       // 0.0 at one, and a consumer told to report the number verbatim would
       // say it was decided instantly.
       medianHours: latencies.length ? Math.round(median(latencies) * 100) / 100 : null,
+      // The ends of the range, so a median can be read in context rather than
+      // trusted on its own.
+      slowestHours: latencies.length ? latencies[0] : null,
+      fastestHours: latencies.length ? latencies[latencies.length - 1] : null,
+      // Slowest first, capped: the point is to find the item that stalled, and
+      // a manager scrolling past two hundred rows has stopped reading.
+      waits: waits.slice(0, MAX_WAITS),
       // Lets the presenter say "needs git history" rather than print a zero
       // that looks like "nothing was ever approved".
       historyAvailable: haveHistory,
