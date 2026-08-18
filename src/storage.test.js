@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { mkdtempSync, rmSync, mkdirSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
-import { readFileSync, existsSync } from 'fs';
+import { readFileSync, existsSync, writeFileSync } from 'fs';
 import {
   readConfig, writeConfig,
   readShared, writeShared,
@@ -10,7 +10,7 @@ import {
   writeRoleFile, readRoleFile,
   writeSharedMd, readSharedMd,
   writeQueueItem, readQueueItem, listQueue, deleteQueueItem,
-  writeRejected,
+  writeRejected, listRejected,
   writeSnapshot, readSnapshot, listSnapshots, resolveSnapshotId,
   readCurrentSnapshotPointer, writeCurrentSnapshotPointer,
   readWorkstream, writeWorkstream, listWorkstreamIds,
@@ -166,6 +166,31 @@ describe('review queue', () => {
     deleteQueueItem('q-x', dir);
     expect(() => readQueueItem('q-x', dir)).toThrow();
     expect(listQueue(dir)).toEqual([]);
+  });
+
+  it('listRejected is empty before anything has been rejected', () => {
+    // The directory only exists once something lands in it, and `teamctx stats`
+    // reads it on every run — a throw here would break stats on a healthy
+    // project that has simply never rejected anything.
+    expect(listRejected(dir)).toEqual([]);
+  });
+
+  it('listRejected reads rejections back, oldest first', () => {
+    // Rejections are the only decision that leaves a file behind — approving
+    // deletes the queue item and records nothing — so this is what tells an
+    // approval from a rejection without reading git history.
+    writeRejected({ ...mk('q-b', '2026-07-13T14:00:00.000Z'), status: 'rejected', rejectedAt: '2026-08-02T00:00:00.000Z' }, dir);
+    writeRejected({ ...mk('q-a', '2026-07-13T14:00:00.000Z'), status: 'rejected', rejectedAt: '2026-08-01T00:00:00.000Z' }, dir);
+
+    const all = listRejected(dir);
+    expect(all.map(r => r.id)).toEqual(['q-a', 'q-b']);
+    expect(all[0]).toMatchObject({ status: 'rejected', rejectedAt: '2026-08-01T00:00:00.000Z' });
+  });
+
+  it('listRejected ignores non-JSON files left in the directory', () => {
+    writeRejected({ ...mk('q-1', '2026-07-13T14:00:00.000Z'), rejectedAt: '2026-08-01T00:00:00.000Z' }, dir);
+    writeFileSync(join(dir, 'rejected', 'notes.txt'), 'scratch');
+    expect(listRejected(dir).map(r => r.id)).toEqual(['q-1']);
   });
 
   it('writeRejected persists item to rejected/', () => {
