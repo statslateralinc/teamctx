@@ -100,6 +100,7 @@ teamctx contribute "We decided to use AWS (Why). API migration starts next sprin
 | `teamctx config provider <anthropic\|openai\|gemini>` | Pick which LLM provider teamctx calls |
 | `teamctx config model <id>` | Pick a model from the selected provider's list |
 | `teamctx status` | Project summary |
+| `teamctx stats [--since <date>] [--workstream <id>] [--waits] [--json]` | Team metrics from your own history — no AI call, nothing leaves the machine |
 | `teamctx mcp` | Start an MCP server over stdio so AI clients can call teamctx tools |
 | `teamctx workstream suggest` | AI proposes how to split the active workstream |
 | `teamctx workstream split` | Interactively accept AI-proposed splits |
