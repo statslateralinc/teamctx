@@ -72,10 +72,10 @@ export const name = 'gdrive';
 export const describe = 'Google Drive — a folder of documents, or a single file';
 
 const HELP = 'run `teamctx auth gdrive` — it walks through creating the Google Cloud '
-  + 'project and OAuth client, then saves GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET and '
-  + 'GOOGLE_REFRESH_TOKEN to .env.local. Set the consent screen\'s user type to Internal '
+  + 'project and OAuth client, then saves GDRIVE_CLIENT_ID, GDRIVE_CLIENT_SECRET and '
+  + 'GDRIVE_REFRESH_TOKEN to .env.local. Set the consent screen\'s user type to Internal '
   + 'if you are on Google Workspace — an External client left in "Testing" hands back '
-  + 'refresh tokens that stop working after seven days. A GOOGLE_ACCESS_TOKEN on its own '
+  + 'refresh tokens that stop working after seven days. A GDRIVE_ACCESS_TOKEN on its own '
   + 'also works for about an hour, which is enough to try this out.';
 
 /**
@@ -88,10 +88,14 @@ const HELP = 'run `teamctx auth gdrive` — it walks through creating the Google
  * elsewhere. The exchange happens lazily, on the first call that needs it.
  */
 export function auth(env = process.env) {
-  const accessToken = env.GOOGLE_ACCESS_TOKEN || '';
-  const clientId = env.GOOGLE_CLIENT_ID || '';
-  const clientSecret = env.GOOGLE_CLIENT_SECRET || '';
-  const refreshToken = env.GOOGLE_REFRESH_TOKEN || '';
+  // GDRIVE_* is the primary form, because every other connector's variables
+  // carry its own name — SLACK_TOKEN, NOTION_TOKEN, DROPBOX_APP_KEY. GOOGLE_*
+  // is accepted too: it is what Google's own documentation and most other
+  // tooling use, so it is the other name a reader would reasonably guess.
+  const accessToken = env.GDRIVE_ACCESS_TOKEN || env.GOOGLE_ACCESS_TOKEN || '';
+  const clientId = env.GDRIVE_CLIENT_ID || env.GOOGLE_CLIENT_ID || '';
+  const clientSecret = env.GDRIVE_CLIENT_SECRET || env.GOOGLE_CLIENT_SECRET || '';
+  const refreshToken = env.GDRIVE_REFRESH_TOKEN || env.GOOGLE_REFRESH_TOKEN || '';
 
   if (!accessToken && !(clientId && clientSecret && refreshToken)) {
     return { ok: false, help: HELP };
@@ -144,9 +148,9 @@ is pooled and no third party sits between your team and your files.
   5. Copy the Client ID and Client secret
 `);
 
-  const clientId = (await ask('Client ID', env.GOOGLE_CLIENT_ID || '')) || '';
+  const clientId = (await ask('Client ID', env.GDRIVE_CLIENT_ID || env.GOOGLE_CLIENT_ID || '')) || '';
   if (!clientId) throw new Error('gdrive: a client ID is required');
-  const clientSecret = (await askSecret('Client secret', env.GOOGLE_CLIENT_SECRET || '')) || '';
+  const clientSecret = (await askSecret('Client secret', env.GDRIVE_CLIENT_SECRET || env.GOOGLE_CLIENT_SECRET || '')) || '';
   if (!clientSecret) throw new Error('gdrive: a client secret is required');
 
   const { code, redirectUri } = await loopback({
@@ -195,9 +199,9 @@ is pooled and no third party sits between your team and your files.
   }
 
   return {
-    GOOGLE_CLIENT_ID: clientId,
-    GOOGLE_CLIENT_SECRET: clientSecret,
-    GOOGLE_REFRESH_TOKEN: json.refresh_token,
+    GDRIVE_CLIENT_ID: clientId,
+    GDRIVE_CLIENT_SECRET: clientSecret,
+    GDRIVE_REFRESH_TOKEN: json.refresh_token,
   };
 }
 
@@ -211,7 +215,7 @@ export class DriveError extends Error {
       invalid_grant: 'the refresh token is no longer valid. If your OAuth consent screen '
         + 'is External and still in "Testing", Google expires refresh tokens after seven '
         + 'days — set the user type to Internal, or publish the app, then re-authorize',
-      invalid_client: 'GOOGLE_CLIENT_ID or GOOGLE_CLIENT_SECRET is wrong',
+      invalid_client: 'GDRIVE_CLIENT_ID or GDRIVE_CLIENT_SECRET is wrong',
       insufficientFilePermissions: 'the token cannot read that file',
       exportSizeLimitExceeded: 'the document is too large for Drive to export (10MB limit)',
       notFound: 'no such file or folder — check the link, and that this account can open it',
@@ -220,7 +224,7 @@ export class DriveError extends Error {
     }[reason];
 
     if (hint) super(`gdrive: ${hint}`);
-    else if (status === 401) super('gdrive: the credentials were rejected (401) — check GOOGLE_ACCESS_TOKEN, or re-authorize');
+    else if (status === 401) super('gdrive: the credentials were rejected (401) — check GDRIVE_ACCESS_TOKEN, or re-authorize');
     else super(`gdrive ${status}${reason ? ` ${reason}` : ''}: ${detail}`.trim());
 
     this.status = status;

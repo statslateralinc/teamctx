@@ -98,8 +98,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   There is no "import everything" form. Notion has one because a Notion
   integration only sees pages you connected by hand; `drive.readonly` sees your
   entire Drive, so the folder or file has to be named.
-  Credentials come from `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` and
-  `GOOGLE_REFRESH_TOKEN` (or a bare `GOOGLE_ACCESS_TOKEN` for an hour), and the
+  Credentials come from `GDRIVE_CLIENT_ID`, `GDRIVE_CLIENT_SECRET` and
+  `GDRIVE_REFRESH_TOKEN` (or a bare `GDRIVE_ACCESS_TOKEN` for an hour); the
+  `GOOGLE_`-prefixed names are accepted as aliases, and the
   access token is exchanged lazily on the first request rather than in `auth`.
   `teamctx auth gdrive` obtains them: it prints the Cloud project and OAuth
   client setup, opens Google's consent screen against a listener bound to

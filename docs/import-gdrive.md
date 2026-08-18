@@ -96,15 +96,19 @@ so this is the only supported route for a desktop app.
 The result is written to `.env.local`, which is gitignored:
 
 ```
-GOOGLE_CLIENT_ID=…
-GOOGLE_CLIENT_SECRET=…
-GOOGLE_REFRESH_TOKEN=…
+GDRIVE_CLIENT_ID=…
+GDRIVE_CLIENT_SECRET=…
+GDRIVE_REFRESH_TOKEN=…
 ```
+
+The `GOOGLE_`-prefixed names are accepted too, since that is what Google's own
+documentation uses — but `GDRIVE_` is the primary form, matching every other
+connector's variables (`SLACK_TOKEN`, `NOTION_TOKEN`, `DROPBOX_APP_KEY`).
 
 <details>
 <summary>Just trying it out</summary>
 
-`GOOGLE_ACCESS_TOKEN` works on its own for about an hour — the
+`GDRIVE_ACCESS_TOKEN` works on its own for about an hour — the
 [OAuth Playground](https://developers.google.com/oauthplayground) will issue one
 against your own client (gear icon → "Use your own OAuth credentials"). Enough
 for a dry run, not enough to keep.

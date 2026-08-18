@@ -55,7 +55,7 @@ describe('auth', () => {
   it('explains the whole procedure when there are no credentials', () => {
     const r = gdrive.auth({});
     expect(r.ok).toBe(false);
-    expect(r.help).toMatch(/GOOGLE_REFRESH_TOKEN/);
+    expect(r.help).toMatch(/GDRIVE_REFRESH_TOKEN/);
     // Point at the command rather than reciting the OAuth dance.
     expect(r.help, 'must name the command that fixes this').toMatch(/teamctx auth gdrive/);
     // The seven-day expiry is the failure that shows up a week after
@@ -65,12 +65,29 @@ describe('auth', () => {
 
   it('accepts a client id, secret and refresh token', () => {
     expect(gdrive.auth({
-      GOOGLE_CLIENT_ID: 'cid', GOOGLE_CLIENT_SECRET: 'secret', GOOGLE_REFRESH_TOKEN: 'r1',
+      GDRIVE_CLIENT_ID: 'cid', GDRIVE_CLIENT_SECRET: 'secret', GDRIVE_REFRESH_TOKEN: 'r1',
     })).toMatchObject({ ok: true, refreshToken: 'r1' });
   });
 
+  it('also accepts the GOOGLE_ names, which are the other reasonable guess', () => {
+    // Every other connector's variables carry its own name, so GDRIVE_* is the
+    // form the project's own convention implies. GOOGLE_* is what Google's
+    // documentation uses, so both have to work or one group of users is
+    // silently ignored.
+    expect(gdrive.auth({
+      GOOGLE_CLIENT_ID: 'cid', GOOGLE_CLIENT_SECRET: 's', GOOGLE_REFRESH_TOKEN: 'r1',
+    })).toMatchObject({ ok: true, clientId: 'cid', refreshToken: 'r1' });
+  });
+
+  it('prefers GDRIVE_ when both are set', () => {
+    expect(gdrive.auth({
+      GDRIVE_CLIENT_ID: 'mine', GOOGLE_CLIENT_ID: 'other',
+      GDRIVE_CLIENT_SECRET: 's', GDRIVE_REFRESH_TOKEN: 'r',
+    }).clientId).toBe('mine');
+  });
+
   it('accepts a bare access token, for trying it out without a client', () => {
-    const r = gdrive.auth({ GOOGLE_ACCESS_TOKEN: 'ya29.x' });
+    const r = gdrive.auth({ GDRIVE_ACCESS_TOKEN: 'ya29.x' });
     expect(r).toMatchObject({ ok: true, accessToken: 'ya29.x' });
     // Nothing can renew it, so it is used until Google rejects it rather than
     // refreshed against a clock we have no token for.
@@ -78,14 +95,14 @@ describe('auth', () => {
   });
 
   it('rejects a partial set rather than failing later with a confusing error', () => {
-    expect(gdrive.auth({ GOOGLE_CLIENT_ID: 'cid', GOOGLE_REFRESH_TOKEN: 'r1' }).ok).toBe(false);
+    expect(gdrive.auth({ GDRIVE_CLIENT_ID: 'cid', GDRIVE_REFRESH_TOKEN: 'r1' }).ok).toBe(false);
   });
 
   it('does not make a network call', () => {
     // Every other connector's auth is synchronous, and a --dry-run that is
     // misconfigured elsewhere should not spend a request here.
     const spy = vi.spyOn(globalThis, 'fetch');
-    gdrive.auth({ GOOGLE_CLIENT_ID: 'c', GOOGLE_CLIENT_SECRET: 's', GOOGLE_REFRESH_TOKEN: 'r' });
+    gdrive.auth({ GDRIVE_CLIENT_ID: 'c', GDRIVE_CLIENT_SECRET: 's', GDRIVE_REFRESH_TOKEN: 'r' });
     expect(spy).not.toHaveBeenCalled();
   });
 });
@@ -117,9 +134,9 @@ describe('authorize', () => {
       ask: answers(['cid', 'csecret']), loopback: loopback(),
     });
     expect(values).toEqual({
-      GOOGLE_CLIENT_ID: 'cid',
-      GOOGLE_CLIENT_SECRET: 'csecret',
-      GOOGLE_REFRESH_TOKEN: 'r-live',
+      GDRIVE_CLIENT_ID: 'cid',
+      GDRIVE_CLIENT_SECRET: 'csecret',
+      GDRIVE_REFRESH_TOKEN: 'r-live',
     });
   });
 
@@ -155,7 +172,7 @@ describe('authorize', () => {
       ask: async (q, d) => { plain.push(q); return d || 'x'; },
       askSecret: async (q, d) => { masked.push(q); return d || 'x'; },
       loopback: loopback(),
-      env: { GOOGLE_CLIENT_ID: 'cid', GOOGLE_CLIENT_SECRET: 'the-real-secret' },
+      env: { GDRIVE_CLIENT_ID: 'cid', GDRIVE_CLIENT_SECRET: 'the-real-secret' },
     });
     expect(masked).toContain('Client secret');
     expect(plain, 'a client id is public; the secret is not').not.toContain('Client secret');
@@ -493,7 +510,7 @@ describe('errors', () => {
     // "invalid_grant" on its own explains nothing.
     globalThis.fetch = vi.fn(async () => fail(400, { error: 'invalid_grant', error_description: 'Token has been expired or revoked.' }));
 
-    const a = gdrive.auth({ GOOGLE_CLIENT_ID: 'c', GOOGLE_CLIENT_SECRET: 's', GOOGLE_REFRESH_TOKEN: 'r' });
+    const a = gdrive.auth({ GDRIVE_CLIENT_ID: 'c', GDRIVE_CLIENT_SECRET: 's', GDRIVE_REFRESH_TOKEN: 'r' });
     await expect(gdrive.list(a, `https://drive.google.com/drive/folders/${FOLDER}`, nowait))
       .rejects.toThrow(/seven days/);
   });
@@ -545,7 +562,7 @@ describe('errors', () => {
   it('says which credential is wrong on a 401', async () => {
     globalThis.fetch = route([['files?', fail(401, {})]]);
     await expect(gdrive.list(authed(), `https://drive.google.com/drive/folders/${FOLDER}`, nowait))
-      .rejects.toThrow(/GOOGLE_ACCESS_TOKEN/);
+      .rejects.toThrow(/GDRIVE_ACCESS_TOKEN/);
   });
 });
 
@@ -556,7 +573,7 @@ describe('the access token', () => {
       ['files?', json({ files: [] })],
     ]);
 
-    const a = gdrive.auth({ GOOGLE_CLIENT_ID: 'c', GOOGLE_CLIENT_SECRET: 's', GOOGLE_REFRESH_TOKEN: 'r' });
+    const a = gdrive.auth({ GDRIVE_CLIENT_ID: 'c', GDRIVE_CLIENT_SECRET: 's', GDRIVE_REFRESH_TOKEN: 'r' });
     expect(calls).toHaveLength(0);
 
     await gdrive.list(a, `https://drive.google.com/drive/folders/${FOLDER}`, nowait);
@@ -574,7 +591,7 @@ describe('the access token', () => {
         : { files: [file(SUB, 'Sub', MIME.folder)] })],
     ]);
 
-    const a = gdrive.auth({ GOOGLE_CLIENT_ID: 'c', GOOGLE_CLIENT_SECRET: 's', GOOGLE_REFRESH_TOKEN: 'r' });
+    const a = gdrive.auth({ GDRIVE_CLIENT_ID: 'c', GDRIVE_CLIENT_SECRET: 's', GDRIVE_REFRESH_TOKEN: 'r' });
     await gdrive.list(a, `https://drive.google.com/drive/folders/${FOLDER}`, nowait);
 
     expect(calls.filter(c => c.url.includes('oauth2.googleapis.com'))).toHaveLength(1);
@@ -583,7 +600,7 @@ describe('the access token', () => {
   it('is renewed early, so it cannot expire between two documents', async () => {
     globalThis.fetch = route([['oauth2.googleapis.com', json({ access_token: 'ya29.fresh', expires_in: 3600 })]]);
 
-    const a = gdrive.auth({ GOOGLE_CLIENT_ID: 'c', GOOGLE_CLIENT_SECRET: 's', GOOGLE_REFRESH_TOKEN: 'r' });
+    const a = gdrive.auth({ GDRIVE_CLIENT_ID: 'c', GDRIVE_CLIENT_SECRET: 's', GDRIVE_REFRESH_TOKEN: 'r' });
     globalThis.fetch = route([
       ['oauth2.googleapis.com', json({ access_token: 'ya29.fresh', expires_in: 3600 })],
       ['files?', json({ files: [] })],
