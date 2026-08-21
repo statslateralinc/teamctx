@@ -1,6 +1,39 @@
-import { readDocuments } from '../../src/import.js';
+import { normalizeDocument } from '../../src/import.js';
+import { getConnector, ConnectorAuthError } from '../../src/connectors/index.js';
 import { contributeCore } from './contribute.core.js';
 import { UnknownWorkstreamError } from './role.core.js';
+
+/**
+ * Collect documents from a connector.
+ *
+ * Local paths resolve to the `folder` connector rather than calling the reader
+ * directly, so the contract is exercised by every import instead of only by
+ * code that does not exist yet. An interface nothing runs is decoration.
+ */
+async function collect({ from, selector, cwd, since, env = process.env }) {
+  const connector = getConnector(from);
+
+  const credentials = await connector.auth(env);
+  if (!credentials?.ok) throw new ConnectorAuthError(connector.name, credentials?.help);
+
+  const listed = await connector.list(credentials, selector, { cwd, since });
+  const items = listed?.items ?? listed ?? [];
+  const skipped = [...(listed?.skipped ?? [])];
+
+  const documents = [];
+  for (const item of items) {
+    const raw = await connector.fetch(credentials, item.ref ?? item);
+    // Every source obeys the same rules — a remote document that is whitespace
+    // or half a megabyte is rejected exactly as a local file would be.
+    const { document, skipped: skip } = normalizeDocument(
+      { ...raw, id: raw?.id ?? item.id, source: connector.name },
+      {},
+    );
+    if (document) documents.push(document);
+    else skipped.push(skip);
+  }
+  return { documents, skipped };
+}
 
 /**
  * Import local documents as proposed contributions.
@@ -15,16 +48,28 @@ import { UnknownWorkstreamError } from './role.core.js';
  * already cover it — there is no second way into shared context.
  */
 export async function importDocuments({
+  // The positional arguments are a *selector*, interpreted by whichever
+  // connector is chosen: paths for `folder`, a channel for Slack. Validating
+  // one is the connector's job — the registry has no idea what a valid
+  // selector looks like.
   paths,
+  // Defaults to `folder`, so local import runs through the same contract a
+  // remote connector will. An interface nothing exercises is decoration.
+  from = 'folder',
   workstreamId,
   dryRun = false,
+  // How far back a connector should look. Meaningless for a folder; the
+  // difference between a usable import and a drowned review queue for a chat
+  // source, so it belongs on the shared surface rather than in one connector.
+  since,
   cwd = process.cwd(),
+  env,
   teamctxDir,
   projectDir,
   onScanned,
   onProgress,
 } = {}) {
-  const { documents, skipped } = readDocuments(paths, { cwd });
+  const { documents, skipped } = await collect({ from, selector: paths ?? [], cwd, since, env });
   // Reading is done before any AI call, so callers can report what was found
   // and skipped up front rather than after several minutes of distilling.
   onScanned?.({ documents, skipped });

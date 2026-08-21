@@ -18,6 +18,8 @@ These are **contributor-facing write-ups** for the larger items on the
 | Proposal | Serves | Rough size |
 |----------|--------|-----------|
 | [Context import (cold-start onboarding)](context-import.md) | Bring your own tools · Managers in control | Medium–Large (splittable) |
+| [Import connector contract](import-connectors.md) | Bring your own tools | Medium (one PR per connector after) |
+| [Google Drive import connector](import-gdrive.md) | Bring your own tools | Medium (the auth is the work) |
 | [Local team-productivity metrics](local-metrics.md) | Prove team productivity | Medium (splittable) |
 
 ## Shipped proposals 🎉

@@ -25,6 +25,28 @@ function newContribution({ text, author, authorKey, tagged, source, workstream }
   };
 }
 
+/**
+ * Where a contribution came from, as a commit trailer.
+ *
+ * `git log .teamctx/` is the audit trail — it is what `teamctx stats` will
+ * walk, and what someone reads when asking "where did this come from". Only
+ * `mcp` was ever named there, so an imported contribution was indistinguishable
+ * from a typed one even though the record knew the answer.
+ *
+ * In the body rather than the subject: a Slack source is
+ * `import:slack:C0BPPEJVBV4/p1786543526387459`, and truncating it to fit a
+ * subject line would destroy the one property that makes it worth recording —
+ * that you can follow it back to the artifact.
+ *
+ * `cli` is the default and says nothing, because noting it on every commit
+ * would be noise.
+ */
+export function sourceTrailer(source) {
+  return !source || source === 'cli' ? '' : `
+
+Source: ${source}`;
+}
+
 function workstreamDisplayName(id, workstream, config) {
   return config.workstreams?.find(w => w.id === id)?.name || workstream.name || config.project;
 }
@@ -87,7 +109,9 @@ export async function contributeCore({
       text: contribution.text, tagged: contribution.tagged, summary, operations,
     }, teamctxDir);
     const { pushed, pushError } = await commitAndOptionallyPush(
-      config, `queue: ${actor} submission pending approval (${contribution.id})`, projectDir,
+      config,
+      `queue: ${actor} submission pending approval (${contribution.id})${sourceTrailer(source)}`,
+      projectDir,
     );
     return {
       id: contribution.id, workstream: targetId, author: actor, source,
@@ -113,9 +137,10 @@ export async function contributeCore({
 
   const note = tagged === 'decision' ? ' [decision]' : '';
   const wsNote = targetId === 'main' ? '' : ` (${targetId})`;
-  const sourceNote = source === 'mcp' ? ' (via mcp)' : '';
   const { pushed, pushError } = await commitAndOptionallyPush(
-    config, `context: ${actor} contribution${sourceNote}${note}${wsNote}`, projectDir,
+    config,
+    `context: ${actor} contribution${note}${wsNote}${sourceTrailer(source)}`,
+    projectDir,
   );
 
   return {
