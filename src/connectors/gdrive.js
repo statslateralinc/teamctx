@@ -138,14 +138,28 @@ export async function authorize({ ask, askSecret = ask, loopback, env = process.
 Google Drive needs an OAuth client of your own. teamctx ships none, so no quota
 is pooled and no third party sits between your team and your files.
 
-  1. Open https://console.cloud.google.com/projectcreate and make a project
-  2. Enable the Drive API:
+  1. Create a project:
+     https://console.cloud.google.com/projectcreate
+  2. Enable the Drive API — do this first, or step 3 will not appear:
      https://console.cloud.google.com/apis/library/drive.googleapis.com
-  3. OAuth consent screen: choose Internal if you are on Google Workspace.
-     Choosing External leaves the app in "Testing", and Google then expires
-     your login after seven days.
-  4. Credentials → Create credentials → OAuth client ID → type "Desktop app"
-  5. Copy the Client ID and Client secret
+  3. Google Auth Platform -> Get Started (this is what older guides call the
+     "OAuth consent screen"):
+     https://console.cloud.google.com/auth/branding
+     For Audience, choose Internal if you are on Google Workspace. External
+     leaves the app in "Testing", and Google then expires your login after
+     seven days.
+  4. If you chose External, add yourself as a test user, or the login is
+     refused later:
+     https://console.cloud.google.com/auth/audience -> Test users -> Add users
+  5. Add the scope https://www.googleapis.com/auth/drive.readonly :
+     https://console.cloud.google.com/auth/scopes -> Add or remove scopes
+  6. Create the client:
+     https://console.cloud.google.com/auth/clients -> Create client
+     -> Application type "Desktop app"
+  7. Copy the Client ID and Client secret
+
+  No redirect URI to configure — a Desktop app client accepts loopback
+  automatically, and teamctx picks a free port each run.
 `);
 
   const clientId = (await ask('Client ID', env.GDRIVE_CLIENT_ID || env.GOOGLE_CLIENT_ID || '')) || '';
