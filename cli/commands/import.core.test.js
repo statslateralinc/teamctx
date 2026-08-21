@@ -207,3 +207,69 @@ describe('importDocuments — nothing to do', () => {
     expect(seen).toEqual(['docs/a.md', 'docs/b.md']);
   });
 });
+
+describe('importDocuments — connectors', () => {
+  it('routes local paths through the folder connector', async () => {
+    // Not a detail: local import exercising the contract is what keeps the
+    // contract honest once real connectors are written against it.
+    write('docs/a.md', '# A\n\nalpha');
+    const r = await importDocuments({ paths: ['docs'], cwd: root, dryRun: true });
+    expect(r.documents[0]).toMatchObject({ id: 'docs/a.md', source: 'folder' });
+  });
+
+  it('names the known connectors when asked for one that does not exist', async () => {
+    await expect(importDocuments({ paths: ['x'], from: 'slak', cwd: root }))
+      .rejects.toThrow(/unknown connector "slak"/);
+  });
+
+  it('refuses to run when a connector cannot authenticate', async () => {
+    // The help string is the point — a missing token should say how to set it
+    // rather than failing deeper with a stack trace.
+    vi.resetModules();
+    vi.doMock('../../src/connectors/index.js', async (orig) => {
+      const actual = await orig();
+      return {
+        ...actual,
+        getConnector: () => ({
+          name: 'locked',
+          auth: () => ({ ok: false, help: 'set LOCKED_TOKEN in .env.local' }),
+          list: () => ({ items: [] }),
+          fetch: () => ({}),
+        }),
+      };
+    });
+    const { importDocuments: fresh } = await import('./import.core.js');
+    await expect(fresh({ paths: ['x'], from: 'locked', cwd: root }))
+      .rejects.toThrow(/set LOCKED_TOKEN/);
+    vi.doUnmock('../../src/connectors/index.js');
+    vi.resetModules();
+  });
+
+  it('applies the shared document rules to whatever a connector returns', async () => {
+    // A connector handing back whitespace must be skipped exactly as an empty
+    // file is, or each one invents its own idea of what counts as valid.
+    vi.resetModules();
+    vi.doMock('../../src/connectors/index.js', async (orig) => {
+      const actual = await orig();
+      return {
+        ...actual,
+        getConnector: () => ({
+          name: 'fake',
+          auth: () => ({ ok: true }),
+          list: () => ({ items: [{ ref: 'a', id: 'fake:1' }, { ref: 'b', id: 'fake:2' }] }),
+          fetch: (_a, ref) => (ref === 'a'
+            ? { id: 'fake:1', text: '# Real\n\ncontent' }
+            : { id: 'fake:2', text: '   \n  ' }),
+        }),
+      };
+    });
+    const { importDocuments: fresh } = await import('./import.core.js');
+    const r = await fresh({ paths: ['sel'], from: 'fake', cwd: root, dryRun: true });
+
+    expect(r.documents.map(d => d.id)).toEqual(['fake:1']);
+    expect(r.documents[0]).toMatchObject({ title: 'Real', source: 'fake' });
+    expect(r.skipped).toEqual([{ id: 'fake:2', reason: 'empty' }]);
+    vi.doUnmock('../../src/connectors/index.js');
+    vi.resetModules();
+  });
+});
