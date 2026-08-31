@@ -28,6 +28,19 @@ export function isGithubCtx(dir) {
   return typeof dir === 'object' && dir !== null && dir.__backend === 'github';
 }
 
+/**
+ * Turns a human-typed project name into a GitHub-valid repo name. Never
+ * empty — an all-punctuation or blank name still needs somewhere to land.
+ */
+export function slugifyProjectName(name) {
+  const slug = String(name || '')
+    .toLowerCase()
+    .trim()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '');
+  return slug || 'project';
+}
+
 export class GithubSession {
   constructor({ owner, repo, ref, ghToken }) {
     if (!owner || !repo) throw new Error('GithubSession requires owner + repo');
