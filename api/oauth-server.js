@@ -6,7 +6,9 @@ import { kvGet, kvSet, kvTake, kvDelete, keys, TTL, isPersistent } from '../src/
 import { googleAuthorizeUrl } from '../src/oauth/google.js';
 import { primaryEmail } from '../src/oauth/github-identity.js';
 import { lendDecision } from '../src/oauth/lend-decision.js';
-import { listUserOrgs, createRepo, slugifyProjectName } from '../src/adapters/github.js';
+import { GithubSession, listUserOrgs, createRepo, slugifyProjectName } from '../src/adapters/github.js';
+import { runWithSession } from '../src/session-context.js';
+import { initProject } from '../cli/commands/init.core.js';
 
 /**
  * Single Vercel function serving every OAuth surface. `vercel.json` rewrites
@@ -319,8 +321,22 @@ app.post('/settings/new-project', async (req, res) => {
     }
   }
 
-  // Task 8 replaces this with the GithubSession + initProject wiring.
-  res.send(`repo created: ${owner}/${repo}`);
+  try {
+    const session = new GithubSession({ owner, repo, ghToken: user.token });
+    await session.prefetch();
+    await runWithSession(session, () => initProject({
+      project: projectName,
+      me: user.name || user.login,
+      source: 'web',
+    }));
+  } catch (e) {
+    // Repo exists but isn't initialized. Don't strand the manager here —
+    // give them a retry that skips straight back to this step, not a dead
+    // end. No second createRepo call: owner/repo travel as hidden fields.
+    return res.status(500).send(newProjectRetryPage({ owner, repo, projectName, error: e.message }));
+  }
+
+  res.send(newProjectSuccessPage({ owner, repo, baseUrl: baseUrlFor(req) }));
 });
 
 /**
@@ -679,6 +695,26 @@ ${error ? `<div class="bad">${esc(error)}</div>` : ''}
   </select>
   <p class="muted">The repository is created private. You can change that later from GitHub if you want.</p>
   <button type="submit">Create project</button>
+</form>`);
+
+const newProjectSuccessPage = ({ owner, repo, baseUrl }) => shell('Project created', `
+<h1>Your project is ready</h1>
+<p><code>${esc(owner)}/${esc(repo)}</code> was created on GitHub and initialized for teamctx.</p>
+<label>Paste this into Claude → Settings → Connectors → Add custom connector</label>
+<input readonly value="${esc(baseUrl)}/api/mcp/${esc(owner)}/${esc(repo)}" onclick="this.select()">
+<p class="muted">Then click Connect and approve the GitHub consent screen. Tools
+appear right away — you can start adding tasks immediately.</p>`);
+
+const newProjectRetryPage = ({ owner, repo, projectName, error }) => shell('Almost there', `
+<h1>The repository was created, but setup didn't finish</h1>
+<div class="bad">${esc(error)}</div>
+<p><code>${esc(owner)}/${esc(repo)}</code> exists on GitHub. Try again — this
+won't create a second repository.</p>
+<form method="POST" action="/settings/new-project">
+  <input type="hidden" name="repoOwner" value="${esc(owner)}">
+  <input type="hidden" name="repoRepo" value="${esc(repo)}">
+  <input type="hidden" name="projectName" value="${esc(projectName)}">
+  <button type="submit">Try again</button>
 </form>`);
 
 const signInPage = () => shell('Sign in', `
