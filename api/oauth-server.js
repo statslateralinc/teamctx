@@ -158,7 +158,7 @@ app.get('/oauth/github/callback', async (req, res) => {
       await kvSet(keys.session(sid), githubUser, { ttlSeconds: TTL.session });
       res.setHeader('Set-Cookie',
         `teamctx_sid=${sid}; HttpOnly; Secure; SameSite=Lax; Path=/; Max-Age=${TTL.session}`);
-      return res.redirect(303, '/settings');
+      return res.redirect(303, settingsPending.returnTo || '/settings');
     } catch (e) {
       return res.status(400).send(errorPage(e.message));
     }
@@ -247,7 +247,16 @@ app.get('/settings', async (req, res) => {
 /** Starts the GitHub login. Only reached by clicking Sign in. */
 app.get('/settings/signin', async (req, res) => {
   const state = randomBytes(18).toString('base64url');
-  await kvSet(keys.pending(`settings:${state}`), { kind: 'settings' }, { ttlSeconds: TTL.pending });
+  // Allow-listed rather than trusted: this is the only place a client-
+  // supplied path could end up driving a redirect, so anything outside
+  // /settings/<word> is dropped rather than carried through.
+  const requestedReturnTo = String(req.query.returnTo || '');
+  const returnTo = /^\/settings\/[a-z-]+$/.test(requestedReturnTo) ? requestedReturnTo : null;
+  await kvSet(
+    keys.pending(`settings:${state}`),
+    returnTo ? { kind: 'settings', returnTo } : { kind: 'settings' },
+    { ttlSeconds: TTL.pending },
+  );
   const url = new URL('https://github.com/login/oauth/authorize');
   url.searchParams.set('client_id', process.env.GITHUB_OAUTH_CLIENT_ID || '');
   url.searchParams.set('redirect_uri', `${baseUrlFor(req)}/oauth/github/callback`);
