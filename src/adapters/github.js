@@ -55,6 +55,40 @@ export async function listUserOrgs(token) {
   return body.map(o => ({ login: o.login }));
 }
 
+/**
+ * Creates a private repo with an initial commit — `auto_init` is required so
+ * the repo has a real default branch for GithubSession.commit() to build the
+ * .teamctx/ commit on top of; a zero-commit repo has no ref to resolve.
+ */
+export async function createRepo(token, { name, org, description = '' }) {
+  const url = org ? `${API}/orgs/${org}/repos` : `${API}/user/repos`;
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${token}`,
+      Accept: 'application/vnd.github+json',
+      'X-GitHub-Api-Version': '2022-11-28',
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ name, description, private: true, auto_init: true }),
+  });
+  const body = await res.json().catch(() => ({}));
+  if (res.status === 422) {
+    const err = new Error(body.message || `github: repo "${name}" already exists`);
+    err.code = 'REPO_EXISTS';
+    throw err;
+  }
+  if (res.status === 403) {
+    const err = new Error(body.message || `github: not allowed to create a repo in ${org || 'your account'}`);
+    err.code = 'REPO_FORBIDDEN';
+    throw err;
+  }
+  if (!res.ok) {
+    throw new Error(`github: repo creation failed (${res.status}): ${JSON.stringify(body).slice(0, 400)}`);
+  }
+  return { owner: body.owner.login, repo: body.name };
+}
+
 export class GithubSession {
   constructor({ owner, repo, ref, ghToken }) {
     if (!owner || !repo) throw new Error('GithubSession requires owner + repo');
