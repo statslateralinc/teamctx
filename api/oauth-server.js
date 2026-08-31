@@ -6,7 +6,7 @@ import { kvGet, kvSet, kvTake, kvDelete, keys, TTL, isPersistent } from '../src/
 import { googleAuthorizeUrl } from '../src/oauth/google.js';
 import { primaryEmail } from '../src/oauth/github-identity.js';
 import { lendDecision } from '../src/oauth/lend-decision.js';
-import { listUserOrgs } from '../src/adapters/github.js';
+import { listUserOrgs, createRepo, slugifyProjectName } from '../src/adapters/github.js';
 
 /**
  * Single Vercel function serving every OAuth surface. `vercel.json` rewrites
@@ -278,6 +278,49 @@ app.get('/settings/new-project', async (req, res) => {
   if (!user) return res.redirect(303, '/settings/signin?returnTo=/settings/new-project');
   const orgs = await safeListOrgs(user.token);
   res.send(newProjectPage({ user, orgs }));
+});
+
+app.post('/settings/new-project', async (req, res) => {
+  const user = await currentUser(req);
+  if (!user) return res.redirect(303, '/settings/signin?returnTo=/settings/new-project');
+
+  const projectName = String(req.body?.projectName || '').trim();
+  if (!projectName) {
+    const orgs = await safeListOrgs(user.token);
+    return res.status(400).send(newProjectPage({ user, orgs, error: 'Enter a project name.' }));
+  }
+
+  // Retry path: the repo already exists from a previous attempt whose
+  // init step failed. Task 8's error page posts back here with these two
+  // fields set, skipping straight to (re-)running init — no second
+  // createRepo call, so this can't create a duplicate repo.
+  const retryOwner = String(req.body?.repoOwner || '').trim();
+  const retryRepo = String(req.body?.repoRepo || '').trim();
+
+  let owner, repo;
+  if (retryOwner && retryRepo) {
+    owner = retryOwner;
+    repo = retryRepo;
+  } else {
+    const org = String(req.body?.orgLogin || '').trim() || null;
+    const name = slugifyProjectName(projectName);
+    try {
+      const created = await createRepo(user.token, { name, org, description: projectName });
+      owner = created.owner;
+      repo = created.repo;
+    } catch (e) {
+      const orgs = await safeListOrgs(user.token);
+      if (e.code === 'REPO_EXISTS' || e.code === 'REPO_FORBIDDEN') {
+        return res.status(e.code === 'REPO_EXISTS' ? 409 : 403).send(
+          newProjectPage({ user, orgs, projectName, orgLogin: org, error: e.message }),
+        );
+      }
+      return res.status(500).send(errorPage(e.message));
+    }
+  }
+
+  // Task 8 replaces this with the GithubSession + initProject wiring.
+  res.send(`repo created: ${owner}/${repo}`);
 });
 
 /**
