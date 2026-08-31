@@ -6,6 +6,7 @@ import { kvGet, kvSet, kvTake, kvDelete, keys, TTL, isPersistent } from '../src/
 import { googleAuthorizeUrl } from '../src/oauth/google.js';
 import { primaryEmail } from '../src/oauth/github-identity.js';
 import { lendDecision } from '../src/oauth/lend-decision.js';
+import { listUserOrgs } from '../src/adapters/github.js';
 
 /**
  * Single Vercel function serving every OAuth surface. `vercel.json` rewrites
@@ -263,6 +264,20 @@ app.get('/settings/signin', async (req, res) => {
   url.searchParams.set('scope', GITHUB_SCOPES);
   url.searchParams.set('state', state);
   res.redirect(url.toString());
+});
+
+/** Org listing is a nice-to-have on this form, not a hard dependency. */
+async function safeListOrgs(token) {
+  try { return await listUserOrgs(token); } catch { return []; }
+}
+
+/** Where a manager with no repo yet gets one, without touching GitHub directly. */
+app.get('/settings/new-project', async (req, res) => {
+  const user = await currentUser(req);
+  res.setHeader('Content-Type', 'text/html; charset=utf-8');
+  if (!user) return res.redirect(303, '/settings/signin?returnTo=/settings/new-project');
+  const orgs = await safeListOrgs(user.token);
+  res.send(newProjectPage({ user, orgs }));
 });
 
 /**
@@ -604,6 +619,24 @@ const choosePage = (state) => shell('Connect', `
   <button type="button">Continue with GitHub</button></a></p>
 <p class="muted">Use Google if someone invited you to a project by email — sign
 in with that same address. Use GitHub if you work on the repository directly.</p>`);
+
+const newProjectPage = ({ user, orgs, projectName = '', orgLogin = '', error = null }) => shell('New project', `
+<h1>Create a new teamctx project</h1>
+<p>Signed in as <strong>${esc(user.login)}</strong>. This creates a new private
+GitHub repository and sets it up for teamctx — nothing to install, nothing to
+type in a terminal.</p>
+${error ? `<div class="bad">${esc(error)}</div>` : ''}
+<form method="POST" action="/settings/new-project">
+  <label for="projectName">Project name</label>
+  <input id="projectName" name="projectName" placeholder="Q3 GTM Strategy" value="${esc(projectName)}" required>
+  <label for="orgLogin">Where should it live?</label>
+  <select id="orgLogin" name="orgLogin">
+    <option value="" ${orgLogin === '' ? 'selected' : ''}>Your personal account (${esc(user.login)})</option>
+    ${orgs.map(o => `<option value="${esc(o.login)}" ${o.login === orgLogin ? 'selected' : ''}>${esc(o.login)}</option>`).join('')}
+  </select>
+  <p class="muted">The repository is created private. You can change that later from GitHub if you want.</p>
+  <button type="submit">Create project</button>
+</form>`);
 
 const signInPage = () => shell('Sign in', `
 <h1>teamctx settings</h1>
