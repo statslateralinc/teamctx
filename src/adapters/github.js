@@ -41,6 +41,20 @@ export function slugifyProjectName(name) {
   return slug || 'project';
 }
 
+/** Orgs the token's owner belongs to, for the "where should this repo live" picker. */
+export async function listUserOrgs(token) {
+  const res = await fetch(`${API}/user/orgs`, {
+    headers: {
+      Authorization: `Bearer ${token}`,
+      Accept: 'application/vnd.github+json',
+      'X-GitHub-Api-Version': '2022-11-28',
+    },
+  });
+  if (!res.ok) throw new Error(`github: could not list orgs (${res.status})`);
+  const body = await res.json();
+  return body.map(o => ({ login: o.login }));
+}
+
 export class GithubSession {
   constructor({ owner, repo, ref, ghToken }) {
     if (!owner || !repo) throw new Error('GithubSession requires owner + repo');
