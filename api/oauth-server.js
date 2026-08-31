@@ -610,6 +610,7 @@ const settingsPage = ({ user, hasKey, saved, error, shared = [], lent = [] }) =>
     <button type="submit" class="link">Sign out</button>
   </form>
 </p>
+<p><a href="/settings/new-project"><button type="button">Create a new project</button></a></p>
 ${saved ? '<div class="ok">Saved.</div>' : ''}
 ${error ? `<div class="bad">${esc(error)}</div>` : ''}
 <p class="muted">Used only by the tools that call a model. Stored against your

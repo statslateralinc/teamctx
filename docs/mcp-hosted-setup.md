@@ -149,6 +149,16 @@ For the seven tools that call a model — `ask`, `contribute`,
 `https://<your-deployment>.vercel.app/settings` once, signs in with GitHub,
 and saves an API key. The other 21 tools never need it.
 
+### Don't have a repo yet?
+
+A manager with no existing GitHub repo doesn't need to create one by hand —
+`https://<your-deployment>.vercel.app/settings/new-project` does step 2 for
+them. Sign in with GitHub, name the project, pick where it should live
+(personal account or an org), and teamctx creates a private repo and runs
+`init` on it in one step. The page then hands back the connector URL for step
+1. It's linked from `/settings` as "Create a new project" for anyone already
+signed in.
+
 ---
 
 ## How it fits together
