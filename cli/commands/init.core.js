@@ -17,6 +17,16 @@ const PROVIDERS = [
 export function getProviders() { return PROVIDERS.map(p => ({ ...p })); }
 
 /**
+ * Reading the history of a project bootstrapped with no local checkout and
+ * no shell, the commit message is the only record of where it came from.
+ */
+export function sourceNote(source) {
+  if (source === 'mcp') return ' (via mcp)';
+  if (source === 'web') return ' (via web onboarding)';
+  return '';
+}
+
+/**
  * Hosted mode cannot stat a directory, so it asks the storage layer whether a
  * config is already readable — which is the thing "already initialized" really
  * means.
@@ -126,10 +136,10 @@ export async function initProject({
   } catch { /* preferences are best-effort; never block init */ }
 
   // Same note `contributeCore` puts on its commits: reading the history of a
-  // repo initialized from a chat client, there is otherwise nothing to say where
-  // the commit came from — no local checkout, no shell, just an author.
-  const sourceNote = source === 'mcp' ? ' (via mcp)' : '';
-  await commitContext(`chore: initialize teamctx for "${project}"${sourceNote}`, gitCwd ? { cwd: gitCwd } : undefined);
+  // repo initialized with no local checkout and no shell, there is otherwise
+  // nothing to say where the commit came from — no local checkout, no shell,
+  // just an author.
+  await commitContext(`chore: initialize teamctx for "${project}"${sourceNote(source)}`, gitCwd ? { cwd: gitCwd } : undefined);
 
   let pushed = false;
   if (autoPush) {
