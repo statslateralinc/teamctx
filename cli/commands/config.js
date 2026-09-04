@@ -2,7 +2,8 @@ import { readConfig, writeConfig } from '../../src/storage.js';
 import { getModelsFor, getDefaultModelFor } from '../../src/ai.js';
 import { resolveActor } from '../../src/actor.js';
 import { managerKeys } from '../../src/review.js';
-import { setConfig } from './config.core.js';
+import { isBrokenGate } from '../../src/manager-repair.js';
+import { setConfig, repairManagerGate } from './config.core.js';
 import { writePrefs, resolveDisplayName, resolveIdentity } from '../../src/prefs.js';
 
 const ALIASES = {
@@ -100,7 +101,22 @@ export async function configGithubRawBaseCommand(value) {
  * approval and sign off their own submissions. Showing it stays useful — it is
  * how anyone finds out who to ask.
  */
-export async function configManagerCommand() {
+export async function configManagerCommand(opts = {}) {
+  if (opts.repair) {
+    try {
+      const r = await repairManagerGate();
+      console.log('\n✓ Manager gate repaired.');
+      console.log(`  was: ${r.from}`);
+      console.log(`  now: ${r.to} (${r.name})`);
+      if (r.warning) console.log(`\n  Note: ${r.warning}`);
+      console.log('\nCommit and push .teamctx/config.json — the hosted server reads it from GitHub.\n');
+    } catch (err) {
+      console.error(`\nError: ${err.message}\n`);
+      process.exit(1);
+    }
+    return;
+  }
+
   const config = readConfig();
   const actor = await resolveActor({ config });
   const keys = managerKeys(config);
@@ -111,7 +127,12 @@ export async function configManagerCommand() {
   console.log(`\nManager: ${gate}`);
   console.log(`You:     ${actor.key}`);
 
-  if (keys.length && !keys.includes(actor.key) && !keys.some(k => k === `git:${actor.email || ''}`)) {
+  if (isBrokenGate(config)) {
+    // Worth saying without being asked: nobody can pass this gate, so every
+    // approval on this project is already failing.
+    console.log('\nThis gate is a display name, not an identity — nobody can match it,');
+    console.log('including you. Re-pin it to yourself: teamctx config manager --repair');
+  } else if (keys.length && !keys.includes(actor.key) && !keys.some(k => k === `git:${actor.email || ''}`)) {
     // The same person is a different key on a clone and in a chat client, so
     // this is worth saying plainly rather than leaving to be discovered at the
     // moment an approval is refused.

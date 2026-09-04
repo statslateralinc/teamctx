@@ -175,6 +175,7 @@ config.command('provider [value]').description('Get or set the AI provider (anth
 config.command('model [value]').description('Get or set the AI model').action(configModelCommand);
 config.command('github-raw-base [value]').description('Get or set the GitHub raw base URL').action(configGithubRawBaseCommand);
 config.command('manager').description('Show who may approve or reject (pinned at init, not settable)')
+  .option('--repair', 'Re-pin a display-name gate that nobody can match to your own identity')
   .action(configManagerCommand);
 config.command('manager-email [value]').description('Get or set the manager email for contribution notifications').action(configManagerEmailCommand);
 config.command('deploy-url [value]').description('Get or set the Vercel deploy URL').action(configDeployUrlCommand);

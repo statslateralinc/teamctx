@@ -3,6 +3,7 @@ import {
   readQueueItem, deleteQueueItem, writeRejected, readContributions, listQueue,
 } from '../../src/storage.js';
 import { applyQueueItem, buildRejected, canApprove, isLegacyManagerRef } from '../../src/review.js';
+import { isBrokenGate } from '../../src/manager-repair.js';
 import { serializeToMd, generateRoleFile } from '../../src/context.js';
 import { commitContext, pushContext } from '../../src/git.js';
 import { resolveActor } from '../../src/actor.js';
@@ -30,10 +31,19 @@ export class ManagerGateError extends Error {
     const manager = config.managerKey || config.manager;
     const you = displayName || actor?.name || 'unidentified';
     const key = actor?.key ? ` (${actor.key})` : '';
-    super(`only the configured manager (${manager}) may approve or reject. You are ${you}${key}.`);
+    // A display-name gate names the caller and refuses them in the same
+    // sentence, which reads as a contradiction rather than a problem. Projects
+    // created on the web before #71 all carry one, and nobody can match it.
+    super(isBrokenGate(config)
+      ? `this project's manager gate is "${manager}", a display name rather than an identity — `
+        + 'nobody can match one, including you. Projects created on the web before this was fixed '
+        + 'all carry one. Run `teamctx config manager --repair` from a clone to re-pin it to your '
+        + `own identity${actor?.key ? ` (${actor.key})` : ''}.`
+      : `only the configured manager (${manager}) may approve or reject. You are ${you}${key}.`);
     this.code = 'MANAGER_GATE';
     this.manager = manager;
     this.actor = you;
+    this.brokenGate = isBrokenGate(config);
   }
 }
 
@@ -51,7 +61,7 @@ export function assertManager(config, { actor, displayName } = {}) {
   }
   if (isLegacyManagerRef(config)) {
     // Names are settable by their owner, so a name-based gate is advisory only.
-    console.warn(`Warning: config.manager is a display name ("${config.manager}"), which anyone can set as their own. Run \`teamctx config manager --me\` as the manager to pin it to an identity.`);
+    console.warn(`Warning: config.manager is a display name ("${config.manager}"), which anyone can set as their own. Run \`teamctx config manager --repair\` as the manager to pin it to an identity.`);
   }
 }
 
